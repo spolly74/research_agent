@@ -7,8 +7,9 @@ def editor_node(state: AgentState):
     llm = get_llm()
 
     system_msg = SystemMessage(content="""
-    You are an Editor Agent. Ensure the final output is consistent, well-formatted, and professional.
-    Synthesize the research, code, and reviews into a final report.
+    You are an Editor Agent. Your job is to provide the final answer to the user.
+    Synthesize the research, code, and reviews into a clear, concise response.
+    Do NOT include meta-commentary like "Here is the final report". Just answer the question directly.
     """)
 
     response = llm.invoke([system_msg] + messages)

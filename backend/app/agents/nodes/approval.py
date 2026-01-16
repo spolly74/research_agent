@@ -15,4 +15,4 @@ def approval_node(state: AgentState):
     # Simple heuristic processing of the response
     status = "APPROVED" if "APPROVED" in response.content else "REJECTED"
 
-    return {"messages": [response], "next_step": status}
+    return {"next_step": status}

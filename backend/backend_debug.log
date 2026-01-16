@@ -19,3 +19,26 @@ INFO:     127.0.0.1:51419 - "POST /api/chat/sessions HTTP/1.1" 200 OK
 --- Graph: Routing to Reviewer ---
 INFO:     127.0.0.1:51421 - "POST /api/chat/sessions/3/messages HTTP/1.1" 200 OK
 INFO:     127.0.0.1:51432 - "GET /api/chat/sessions/3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51487 - "GET /api/chat/sessions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51487 - "GET /api/chat/sessions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51487 - "GET /api/chat/sessions/3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51490 - "GET /api/chat/sessions/2 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51490 - "GET /api/chat/sessions/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51490 - "GET /api/chat/sessions/2 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51490 - "GET /api/chat/sessions/3 HTTP/1.1" 200 OK
+WARNING:  StatReload detected changes in 'app/agents/tools/browser.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [3386]
+INFO:     Started server process [4075]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/agents/nodes/researcher.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [4075]
+INFO:     Started server process [4082]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.

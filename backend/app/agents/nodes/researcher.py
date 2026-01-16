@@ -29,10 +29,7 @@ def researcher_node(state: AgentState):
 
     # Invoke
     # Invoke
-    print("--- Researcher Node: invoking LLM ---")
     response = llm_with_tools.invoke([system_msg] + messages)
-    print(f"--- Researcher Node: received response: {response.content} ---")
-    print(f"--- Researcher Node: tool calls: {response.tool_calls} ---")
 
     # Update state
     return {"messages": [response], "research_data": [response.content]}

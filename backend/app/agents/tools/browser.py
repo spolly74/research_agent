@@ -14,10 +14,9 @@ def browser_search(query: str):
         page = browser.new_page()
 
         # Use the HTML-only version of DDG for better scraping compatibility
+        # Use the HTML-only version of DDG for better scraping compatibility
         search_url = f"https://html.duckduckgo.com/html/?q={query}&kl=us-en"
-        print(f"--- Browser Tool: Visiting {search_url} ---")
         page.goto(search_url)
-        print("--- Browser Tool: Page loaded ---")
 
         # Extract text specifically from the search results
         # DDG HTML version uses .result__body for snippets

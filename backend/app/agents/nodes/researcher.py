@@ -28,7 +28,6 @@ def researcher_node(state: AgentState):
     """)
 
     # Invoke
-    # Invoke
     response = llm_with_tools.invoke([system_msg] + messages)
 
     # Update state

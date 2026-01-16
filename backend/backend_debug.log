@@ -42,3 +42,183 @@ INFO:     Finished server process [4075]
 INFO:     Started server process [4082]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'app/agents/nodes/researcher.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [4082]
+INFO:     Started server process [4338]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:51554 - "GET /api/chat/sessions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51554 - "GET /api/chat/sessions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51554 - "GET /api/chat/sessions/3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51554 - "OPTIONS /api/chat/sessions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51554 - "POST /api/chat/sessions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51554 - "GET /api/chat/sessions/4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51556 - "OPTIONS /api/chat/sessions/4/messages HTTP/1.1" 200 OK
+--- Graph: Routing to Tools ---
+INFO:     127.0.0.1:51558 - "OPTIONS /api/chat/sessions/3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51558 - "DELETE /api/chat/sessions/3 HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:51558 - "OPTIONS /api/chat/sessions/2 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51579 - "DELETE /api/chat/sessions/2 HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:51579 - "OPTIONS /api/chat/sessions/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51558 - "DELETE /api/chat/sessions/1 HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:51556 - "POST /api/chat/sessions/4/messages HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/uvicorn/protocols/http/h11_impl.py", line 410, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/fastapi/applications.py", line 1135, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/starlette/applications.py", line 107, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 93, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 144, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/starlette/routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/starlette/routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/starlette/routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/fastapi/routing.py", line 115, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/fastapi/routing.py", line 101, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/fastapi/routing.py", line 355, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/fastapi/routing.py", line 245, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/starlette/concurrency.py", line 32, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/anyio/to_thread.py", line 63, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 2502, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 986, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/app/api/endpoints/chat.py", line 49, in create_message
+    result = graph.invoke(inputs)
+             ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/langgraph/pregel/main.py", line 3071, in invoke
+    for chunk in self.stream(
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/langgraph/pregel/main.py", line 2646, in stream
+    for _ in runner.tick(
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py", line 167, in tick
+    run_with_retry(
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py", line 42, in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py", line 656, in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py", line 400, in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/langgraph/prebuilt/tool_node.py", line 812, in _func
+    outputs = list(
+              ^^^^^
+  File "/opt/anaconda3/lib/python3.12/concurrent/futures/_base.py", line 619, in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/lib/python3.12/concurrent/futures/_base.py", line 317, in _result_or_cancel
+    return fut.result(timeout)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/opt/anaconda3/lib/python3.12/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/langchain_core/runnables/config.py", line 553, in _wrapped_fn
+    return contexts.pop().run(fn, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/langgraph/prebuilt/tool_node.py", line 1023, in _run_one
+    return self._execute_tool_sync(tool_request, input_type, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/langgraph/prebuilt/tool_node.py", line 972, in _execute_tool_sync
+    content = _handle_tool_error(e, flag=self._handle_tool_errors)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/langgraph/prebuilt/tool_node.py", line 429, in _handle_tool_error
+    content = flag(e)  # type: ignore [assignment, call-arg]
+              ^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/langgraph/prebuilt/tool_node.py", line 386, in _default_handle_tool_errors
+    raise e
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/langgraph/prebuilt/tool_node.py", line 929, in _execute_tool_sync
+    response = tool.invoke(call_args, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/langchain_core/tools/base.py", line 632, in invoke
+    return self.run(tool_input, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/langchain_core/tools/base.py", line 987, in run
+    raise error_to_raise
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/langchain_core/tools/base.py", line 953, in run
+    response = context.run(self._run, *tool_args, **tool_kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/langchain_core/tools/structured.py", line 94, in _run
+    return self.func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/app/agents/tools/browser.py", line 19, in browser_search
+    page.goto(search_url)
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/playwright/sync_api/_generated.py", line 9050, in goto
+    self._sync(
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/playwright/_impl/_sync_base.py", line 115, in _sync
+    return task.result()
+           ^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/playwright/_impl/_page.py", line 552, in goto
+    return await self._main_frame.goto(**locals_to_params(locals()))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/playwright/_impl/_frame.py", line 153, in goto
+    await self._channel.send(
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/playwright/_impl/_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/scott/repos/research_agent/backend/venv/lib/python3.12/site-packages/playwright/_impl/_connection.py", line 559, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+playwright._impl._errors.TimeoutError: Page.goto: Timeout 30000ms exceeded.
+Call log:
+  - navigating to "https://html.duckduckgo.com/html/?q=capital%20of%20Paris&kl=us-en", waiting until "load"
+
+During task with name 'tools' and id 'ba19fa40-aa4f-30cc-0093-4f0c55810dee'
+INFO:     127.0.0.1:51590 - "OPTIONS /api/chat/sessions/4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51590 - "DELETE /api/chat/sessions/4 HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:51590 - "POST /api/chat/sessions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51590 - "GET /api/chat/sessions/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51592 - "OPTIONS /api/chat/sessions/1/messages HTTP/1.1" 200 OK
+--- Graph: Routing to Tools ---
+--- Browser Tool: specific selector failed, grabbing body ---
+--- Browser Tool: Content length: 205 ---
+--- Graph: Routing to Reviewer ---
+INFO:     127.0.0.1:51592 - "POST /api/chat/sessions/1/messages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51592 - "GET /api/chat/sessions/1 HTTP/1.1" 200 OK

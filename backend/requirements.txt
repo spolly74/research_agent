@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+langchain
+langchain-community
+langchain-ollama
+langgraph
+sqlalchemy
+alembic
+playwright
+beautifulsoup4
+requests
+pydantic
+python-dotenv
+lxml
+html2text

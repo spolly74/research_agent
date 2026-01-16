@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    /* Using hex codes temporarily if utility classes aren't resolving in @apply immediately */
+    background-color: var(--color-slate-950);
+    color: var(--color-slate-50);
+    @apply antialiased;
+  }
+}

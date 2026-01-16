@@ -1,0 +1,21 @@
+INFO:     Will watch for changes in these directories: ['/Users/scott/repos/research_agent/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [3384] using StatReload
+INFO:     Started server process [3386]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:51419 - "POST /api/chat/sessions HTTP/1.1" 200 OK
+--- Researcher Node: invoking LLM ---
+--- Researcher Node: received response:  ---
+--- Researcher Node: tool calls: [{'name': 'browser_search', 'args': {'query': 'capital of France'}, 'id': '17cca922-23f9-4408-8306-05064e1ed376', 'type': 'tool_call'}] ---
+--- Graph: Routing to Tools ---
+--- Browser Tool: Visiting https://html.duckduckgo.com/html/?q=capital of France&kl=us-en ---
+--- Browser Tool: Page loaded ---
+--- Browser Tool: specific selector failed, grabbing body ---
+--- Browser Tool: Content length: 205 ---
+--- Researcher Node: invoking LLM ---
+--- Researcher Node: received response: The capital of France is Paris. ---
+--- Researcher Node: tool calls: [] ---
+--- Graph: Routing to Reviewer ---
+INFO:     127.0.0.1:51421 - "POST /api/chat/sessions/3/messages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51432 - "GET /api/chat/sessions/3 HTTP/1.1" 200 OK

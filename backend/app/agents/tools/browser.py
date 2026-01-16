@@ -1,39 +1,40 @@
+import os
+from dotenv import load_dotenv
 from langchain_core.tools import tool
 from playwright.sync_api import sync_playwright
 import html2text
+from linkup import LinkupClient
+
+load_dotenv()
 
 @tool
 def browser_search(query: str):
     """
-    Searches the web using a real browser to get results.
-    Useful for getting current information when API search is not available.
+    Searches the web using the Linkup API to get accurate results.
     """
-    with sync_playwright() as p:
-        # Use headless=True for production, False to see it work
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+    api_key = os.getenv("LINKUP_API_KEY")
+    if not api_key:
+        return "Error: LINKUP_API_KEY not found in environment variables."
 
-        # Use the HTML-only version of DDG for better scraping compatibility
-        # Use the HTML-only version of DDG for better scraping compatibility
-        search_url = f"https://html.duckduckgo.com/html/?q={query}&kl=us-en"
-        page.goto(search_url)
+    try:
+        client = LinkupClient(api_key=api_key)
+        results = client.search(
+            query=query,
+            depth="standard",
+            output_type="searchResults"
+        )
 
-        # Extract text specifically from the search results
-        # DDG HTML version uses .result__body for snippets
-        content = page.evaluate("""() => {
-            const results = Array.from(document.querySelectorAll('.result__body'));
-            return results.map(r => r.innerText).join('\\n\\n');
-        }""")
+        # Format results for the LLM
+        formatted_output = ""
+        for result in results.results:
+            formatted_output += f"Title: {result.name}\n"
+            formatted_output += f"URL: {result.url}\n"
+            formatted_output += f"Content: {result.content}\n\n"
 
-        if not content:
-            # Fallback if specific selector fails
-            print("--- Browser Tool: specific selector failed, grabbing body ---")
-            content = page.evaluate("document.body.innerText")
+        return formatted_output[:10000] # Cap output size
 
-        browser.close()
-
-        print(f"--- Browser Tool: Content length: {len(content)} ---")
-        return content[:8000] # Truncate to avoid massive context
+    except Exception as e:
+        return f"Error performing search: {str(e)}"
 
 @tool
 def visit_page(url: str):

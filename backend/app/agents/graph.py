@@ -5,6 +5,7 @@ from app.agents.nodes.reviewer import reviewer_node
 from app.agents.nodes.coder import coder_node
 from app.agents.nodes.editor import editor_node
 from app.agents.nodes.approval import approval_node
+from app.agents.nodes.orchestrator import orchestrator_node
 from langgraph.prebuilt import ToolNode
 from app.agents.tools.browser import browser_search, visit_page
 
@@ -14,6 +15,8 @@ tools = [browser_search, visit_page]
 workflow = StateGraph(AgentState)
 
 # Add nodes
+# Add nodes
+workflow.add_node("orchestrator", orchestrator_node)
 workflow.add_node("researcher", researcher_node)
 workflow.add_node("reviewer", reviewer_node)
 workflow.add_node("coder", coder_node)
@@ -22,7 +25,18 @@ workflow.add_node("approval", approval_node)
 workflow.add_node("tools", ToolNode(tools))
 
 # Set entry point
-workflow.set_entry_point("researcher")
+workflow.set_entry_point("orchestrator")
+
+# Conditional Routing from Orchestrator
+def route_orchestrator(state):
+    step = state.get("next_step", "ANSWER")
+    if step == "RESEARCH":
+        print("--- Orchestrator: Routing to Researcher ---")
+        return "researcher"
+    print("--- Orchestrator: Routing to Editor ---")
+    return "editor"
+
+workflow.add_conditional_edges("orchestrator", route_orchestrator)
 
 # Add edges
 def should_continue(state):

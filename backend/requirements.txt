@@ -1,5 +1,6 @@
 fastapi
 uvicorn
+linkup-sdk
 langchain
 langchain-community
 langchain-ollama

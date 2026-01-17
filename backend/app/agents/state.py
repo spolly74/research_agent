@@ -9,3 +9,4 @@ class AgentState(TypedDict):
     review_feedback: str
     code_output: str
     final_report: str
+    plan: dict  # serialized Plan model

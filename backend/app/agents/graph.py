@@ -1,4 +1,5 @@
 from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import MemorySaver
 from app.agents.state import AgentState
 from app.agents.nodes.researcher import researcher_node
 from app.agents.nodes.reviewer import reviewer_node
@@ -56,4 +57,4 @@ workflow.add_edge("editor", "approval")
 workflow.add_edge("approval", END)
 
 # Compile
-graph = workflow.compile()
+graph = workflow.compile(checkpointer=MemorySaver())

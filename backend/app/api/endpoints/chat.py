@@ -46,7 +46,8 @@ def create_message(session_id: int, message: MessageCreate, db: Session = Depend
 
     # Run the graph
     inputs = {"messages": [HumanMessage(content=message.content)]}
-    result = graph.invoke(inputs)
+    config = {"configurable": {"thread_id": str(session_id)}}
+    result = graph.invoke(inputs, config=config)
 
     # Save Authorization/Final Result
     final_content = result.get("final_report", "Processing complete.")
@@ -63,6 +64,21 @@ def create_message(session_id: int, message: MessageCreate, db: Session = Depend
     db.refresh(ai_message)
 
     return db_message
+
+@router.get("/sessions/{session_id}/plan")
+def get_session_plan(session_id: int):
+    from app.agents.graph import graph
+
+    config = {"configurable": {"thread_id": str(session_id)}}
+    try:
+        current_state = graph.get_state(config)
+        if not current_state or not current_state.values:
+            return {"status": "no_state", "plan": None}
+
+        plan = current_state.values.get("plan")
+        return {"status": "active", "plan": plan}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 @router.delete("/sessions/{session_id}", status_code=204)
 def delete_session(session_id: int, db: Session = Depends(get_db)):

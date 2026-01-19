@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()  # Load environment variables before other imports
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -14,10 +17,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from app.api.endpoints import chat, llm
+from app.api.endpoints import chat, llm, tools
 
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(llm.router, prefix="/api/llm", tags=["llm"])
+app.include_router(tools.router, prefix="/api/tools", tags=["tools"])
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on startup."""
+    # Register built-in tools
+    from app.agents.tools.registry import register_builtin_tools
+    register_builtin_tools()
+
 
 @app.get("/health")
 def read_root():

@@ -8,9 +8,25 @@ from app.agents.nodes.editor import editor_node
 from app.agents.nodes.approval import approval_node
 from app.agents.nodes.orchestrator import orchestrator_node
 from langgraph.prebuilt import ToolNode
-from app.agents.tools.browser import browser_search, visit_page
+from app.agents.tools.registry import get_tool_registry
 
-tools = [browser_search, visit_page]
+
+def get_researcher_tools():
+    """Get tools available to the researcher agent from the registry."""
+    registry = get_tool_registry()
+    return registry.get_tools_for_agent("researcher")
+
+
+# Get tools from registry (will be populated on startup)
+# Fallback to browser tools if registry not yet initialized
+try:
+    tools = get_researcher_tools()
+    if not tools:
+        from app.agents.tools.browser import browser_search, visit_page
+        tools = [browser_search, visit_page]
+except:
+    from app.agents.tools.browser import browser_search, visit_page
+    tools = [browser_search, visit_page]
 
 # Define the graph
 workflow = StateGraph(AgentState)

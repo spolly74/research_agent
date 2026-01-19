@@ -1,17 +1,28 @@
 from langchain_core.messages import HumanMessage, SystemMessage
 from app.agents.state import AgentState
 from app.core.llm_manager import get_llm, TaskType
-from app.agents.tools.browser import browser_search, visit_page
+from app.agents.tools.registry import get_tool_registry
+
 
 def researcher_node(state: AgentState):
     """
     The Researcher agent looks up information using tools.
+
+    Gets available tools from the registry dynamically.
     """
     messages = state["messages"]
 
+    # Get tools from registry
+    registry = get_tool_registry()
+    tools = registry.get_tools_for_agent("researcher")
+
+    # Fallback if no tools registered
+    if not tools:
+        from app.agents.tools.browser import browser_search, visit_page
+        tools = [browser_search, visit_page]
+
     # Initialize LLM with tools - researcher uses Ollama by default
     llm = get_llm(task_type=TaskType.RESEARCHER)
-    tools = [browser_search, visit_page]
     llm_with_tools = llm.bind_tools(tools)
 
     # System prompt to guide the researcher

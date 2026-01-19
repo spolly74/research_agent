@@ -3,6 +3,7 @@ import structlog
 
 from app.agents.state import AgentState
 from app.core.llm_manager import get_llm, TaskType, analyze_complexity
+from app.core.execution_tracker import get_execution_tracker, ExecutionPhase
 from app.models.plan import Plan, Task, ScopeInfo, ResearchParameters
 from app.reports.scope_config import detect_scope_from_query, create_scope_config
 
@@ -11,6 +12,15 @@ logger = structlog.get_logger(__name__)
 
 def orchestrator_node(state: AgentState):
     messages = state["messages"]
+    session_id = state.get("session_id")
+
+    # Get execution tracker for status updates
+    tracker = get_execution_tracker()
+
+    # Update tracking: Orchestrator started
+    if session_id:
+        tracker.set_active_agent(session_id, "orchestrator")
+        tracker.update_phase(session_id, ExecutionPhase.PLANNING, "Analyzing request and creating plan")
 
     # Analyze complexity of the user's request
     user_message = messages[-1].content if messages else ""
@@ -93,8 +103,15 @@ def orchestrator_node(state: AgentState):
             agent=t.assigned_agent
         )
 
+    # Update tracking: Plan created
+    plan_dict = plan.model_dump()
+    if session_id:
+        tracker.set_plan(session_id, plan_dict)
+        tracker.complete_agent(session_id, f"Plan created with {len(plan.tasks)} tasks")
+        tracker.update_agent_progress(session_id, 1.0, "Planning complete")
+
     return {
-        "plan": plan.model_dump(),
+        "plan": plan_dict,
         "next_step": "PLAN_CREATED",
         "scope_config": scope_config.to_dict()
     }

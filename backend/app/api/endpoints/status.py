@@ -12,6 +12,8 @@ from typing import Any, Optional
 import structlog
 
 from app.core.execution_tracker import get_execution_tracker, ExecutionPhase
+from app.core.database import SessionLocal
+from app.models.graph_state import SessionRecovery, GraphCheckpoint
 
 logger = structlog.get_logger(__name__)
 
@@ -294,3 +296,195 @@ def get_session_progress(session_id: str) -> dict[str, Any]:
         "started_at": status.started_at.isoformat(),
         "estimated_completion": status.estimated_completion.isoformat() if status.estimated_completion else None
     }
+
+
+@router.get("/{session_id}/recovery")
+def get_session_recovery_info(session_id: str) -> dict[str, Any]:
+    """
+    Get recovery information for a session.
+
+    Used to check if a session can be resumed after a server restart.
+
+    Args:
+        session_id: The session identifier
+
+    Returns:
+        Recovery status and checkpoint information
+    """
+    db = SessionLocal()
+    try:
+        # Look up recovery record
+        recovery = db.query(SessionRecovery).filter(
+            SessionRecovery.session_id == session_id
+        ).first()
+
+        if not recovery:
+            return {
+                "success": True,
+                "session_id": session_id,
+                "recoverable": False,
+                "reason": "No recovery record found"
+            }
+
+        # Check if checkpoint exists
+        has_checkpoint = False
+        if recovery.last_checkpoint_id:
+            checkpoint = db.query(GraphCheckpoint).filter(
+                GraphCheckpoint.thread_id == recovery.thread_id,
+                GraphCheckpoint.checkpoint_id == recovery.last_checkpoint_id
+            ).first()
+            has_checkpoint = checkpoint is not None
+
+        return {
+            "success": True,
+            "session_id": session_id,
+            "recoverable": has_checkpoint and recovery.status != "completed",
+            "status": recovery.status,
+            "last_phase": recovery.last_phase,
+            "last_checkpoint_id": recovery.last_checkpoint_id,
+            "retry_count": recovery.retry_count,
+            "last_activity": recovery.last_activity_at.isoformat() if recovery.last_activity_at else None,
+            "thread_id": recovery.thread_id
+        }
+    finally:
+        db.close()
+
+
+@router.post("/{session_id}/recover")
+def recover_session(session_id: str) -> dict[str, Any]:
+    """
+    Attempt to recover a session from its last checkpoint.
+
+    This resumes execution from where the session left off.
+
+    Args:
+        session_id: The session identifier
+
+    Returns:
+        Recovery result
+    """
+    from app.agents.graph import graph, can_resume_session, get_session_state
+
+    db = SessionLocal()
+    try:
+        # Get recovery info
+        recovery = db.query(SessionRecovery).filter(
+            SessionRecovery.session_id == session_id
+        ).first()
+
+        if not recovery:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No recovery record for session '{session_id}'"
+            )
+
+        if recovery.status == "completed":
+            raise HTTPException(
+                status_code=400,
+                detail="Session already completed, cannot recover"
+            )
+
+        thread_id = recovery.thread_id
+
+        # Check if we can resume
+        if not can_resume_session(thread_id):
+            raise HTTPException(
+                status_code=400,
+                detail="Session state not available for recovery"
+            )
+
+        # Get the current state
+        state = get_session_state(thread_id)
+
+        # Restart execution tracker
+        tracker = get_execution_tracker()
+        tracker.start_session(session_id, "Recovered session")
+
+        # Update recovery record
+        recovery.retry_count += 1
+        recovery.status = "recovering"
+        db.commit()
+
+        # Continue execution from checkpoint
+        config = {"configurable": {"thread_id": thread_id}}
+
+        try:
+            # Resume the graph
+            result = graph.invoke(None, config=config)
+
+            # Update tracking
+            final_content = result.get("final_report", "")
+            tracker.complete_session(session_id, final_content[:200] if final_content else "")
+
+            # Update recovery status
+            recovery.status = "completed"
+            db.commit()
+
+            return {
+                "success": True,
+                "session_id": session_id,
+                "message": "Session recovered and completed",
+                "result_preview": final_content[:500] if final_content else None
+            }
+
+        except Exception as e:
+            # Record error
+            tracker.record_error(session_id, str(e), recoverable=True)
+            recovery.status = "error"
+            recovery.error_message = str(e)
+            db.commit()
+
+            raise HTTPException(
+                status_code=500,
+                detail=f"Recovery failed: {str(e)}"
+            )
+
+    finally:
+        db.close()
+
+
+@router.get("/recoverable")
+def list_recoverable_sessions(limit: int = 20) -> dict[str, Any]:
+    """
+    List all sessions that can potentially be recovered.
+
+    Args:
+        limit: Maximum number of sessions to return
+
+    Returns:
+        List of recoverable sessions
+    """
+    db = SessionLocal()
+    try:
+        recoverable = db.query(SessionRecovery).filter(
+            SessionRecovery.status.in_(["active", "error", "recovering"])
+        ).order_by(
+            SessionRecovery.last_activity_at.desc()
+        ).limit(limit).all()
+
+        sessions = []
+        for r in recoverable:
+            # Check if checkpoint still exists
+            has_checkpoint = db.query(GraphCheckpoint).filter(
+                GraphCheckpoint.thread_id == r.thread_id,
+                GraphCheckpoint.checkpoint_id == r.last_checkpoint_id
+            ).first() is not None
+
+            if has_checkpoint:
+                sessions.append({
+                    "session_id": r.session_id,
+                    "thread_id": r.thread_id,
+                    "status": r.status,
+                    "last_phase": r.last_phase,
+                    "retry_count": r.retry_count,
+                    "last_activity": r.last_activity_at.isoformat() if r.last_activity_at else None,
+                    "error": r.error_message
+                })
+
+        return {
+            "success": True,
+            "count": len(sessions),
+            "sessions": sessions
+        }
+    finally:
+        db.close()

@@ -1,6 +1,11 @@
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
+import structlog
+
 from app.agents.state import AgentState
+from app.core.checkpointer import get_database_checkpointer, DatabaseCheckpointer
+
+logger = structlog.get_logger(__name__)
 from app.agents.nodes.researcher import researcher_node
 from app.agents.nodes.reviewer import reviewer_node
 from app.agents.nodes.coder import coder_node
@@ -72,5 +77,56 @@ workflow.add_edge("coder", "editor")
 workflow.add_edge("editor", "approval")
 workflow.add_edge("approval", END)
 
+# Configure checkpointer
+# Use environment variable to choose between memory (dev) and database (prod)
+import os
+USE_DB_CHECKPOINTER = os.environ.get("USE_DB_CHECKPOINTER", "true").lower() == "true"
+
+if USE_DB_CHECKPOINTER:
+    try:
+        checkpointer = get_database_checkpointer()
+        logger.info("Using database checkpointer for state persistence")
+    except Exception as e:
+        logger.warning("Failed to initialize database checkpointer, falling back to memory", error=str(e))
+        checkpointer = MemorySaver()
+else:
+    checkpointer = MemorySaver()
+    logger.info("Using memory checkpointer (state will not persist)")
+
 # Compile
-graph = workflow.compile(checkpointer=MemorySaver())
+graph = workflow.compile(checkpointer=checkpointer)
+
+
+def get_session_state(thread_id: str) -> dict:
+    """
+    Retrieve the current state for a session.
+
+    Args:
+        thread_id: The session thread ID
+
+    Returns:
+        The current state dict or empty dict if not found
+    """
+    try:
+        config = {"configurable": {"thread_id": thread_id}}
+        state = graph.get_state(config)
+        if state and state.values:
+            return state.values
+        return {}
+    except Exception as e:
+        logger.error("Error getting session state", error=str(e), thread_id=thread_id)
+        return {}
+
+
+def can_resume_session(thread_id: str) -> bool:
+    """
+    Check if a session can be resumed.
+
+    Args:
+        thread_id: The session thread ID
+
+    Returns:
+        True if the session has state that can be resumed
+    """
+    state = get_session_state(thread_id)
+    return bool(state and state.get("messages"))

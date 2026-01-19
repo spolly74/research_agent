@@ -16,6 +16,7 @@ from typing import Optional
 
 from app.agents.state import AgentState
 from app.core.llm_manager import get_llm, TaskType
+from app.core.execution_tracker import get_execution_tracker, ExecutionPhase
 from app.reports.generator import ReportGenerator
 from app.reports.templates.base import ReportType, SectionType
 from app.reports.scope_config import ScopeConfig, ReportScope, create_scope_config
@@ -142,6 +143,15 @@ def editor_node(state: AgentState):
     messages = state["messages"]
     research_data = state.get("research_data", [])
     scope_config_dict = state.get("scope_config")
+    session_id = state.get("session_id")
+
+    # Get execution tracker
+    tracker = get_execution_tracker()
+
+    # Update tracking: Editor started
+    if session_id:
+        tracker.update_phase(session_id, ExecutionPhase.EDITING, "Generating final report")
+        tracker.set_active_agent(session_id, "editor")
 
     # Get original query from first user message
     original_query = ""
@@ -171,6 +181,10 @@ def editor_node(state: AgentState):
         scope=scope_config.scope.value,
         target_words=scope_config.parameters.target_word_count
     )
+
+    # Update progress
+    if session_id:
+        tracker.update_agent_progress(session_id, 0.2, f"Formatting {response_format} response")
 
     # Get LLM
     llm = get_llm(task_type=TaskType.EDITOR)
@@ -214,6 +228,12 @@ Target approximately {scope_config.parameters.target_word_count} words ({scope_c
             final_content = messages[-1].content
         else:
             final_content = "I apologize, but I couldn't generate a report from the available research. Please try refining your request."
+
+    # Update tracking: Editor completed
+    if session_id:
+        word_count = len(final_content.split())
+        tracker.complete_agent(session_id, f"Report generated ({word_count} words)")
+        tracker.update_phase(session_id, ExecutionPhase.FINALIZING, "Finalizing report")
 
     return {
         "messages": [AIMessage(content=final_content)],

@@ -30,6 +30,11 @@ app.include_router(websocket.router, tags=["websocket"])
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup."""
+    # Create database tables (including new graph state tables)
+    from app.core.database import engine, Base
+    from app.models import chat, tool, plan, graph_state  # Import all models
+    Base.metadata.create_all(bind=engine)
+
     # Register built-in tools
     from app.agents.tools.registry import register_builtin_tools
     register_builtin_tools()

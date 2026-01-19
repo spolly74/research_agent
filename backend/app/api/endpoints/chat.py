@@ -40,19 +40,37 @@ def create_message(session_id: int, message: MessageCreate, db: Session = Depend
     db.commit()
     db.refresh(db_message)
 
+    # Start execution tracking
+    from app.core.execution_tracker import get_execution_tracker
+    tracker = get_execution_tracker()
+    tracking_session_id = f"chat-{session_id}"
+    tracker.start_session(tracking_session_id, message.content)
+
     # Trigger Agent Workflow
     from app.agents.graph import graph
     from langchain_core.messages import HumanMessage
 
-    # Run the graph
-    inputs = {"messages": [HumanMessage(content=message.content)]}
-    config = {"configurable": {"thread_id": str(session_id)}}
-    result = graph.invoke(inputs, config=config)
+    try:
+        # Run the graph with session_id for tracking
+        inputs = {
+            "messages": [HumanMessage(content=message.content)],
+            "session_id": tracking_session_id
+        }
+        config = {"configurable": {"thread_id": str(session_id)}}
+        result = graph.invoke(inputs, config=config)
 
-    # Save Authorization/Final Result
-    final_content = result.get("final_report", "Processing complete.")
-    if not final_content:
-        final_content = result["messages"][-1].content
+        # Save Authorization/Final Result
+        final_content = result.get("final_report", "Processing complete.")
+        if not final_content:
+            final_content = result["messages"][-1].content
+
+        # Mark session complete
+        tracker.complete_session(tracking_session_id, final_content[:200] if final_content else "")
+
+    except Exception as e:
+        # Record error in tracking
+        tracker.record_error(tracking_session_id, str(e), recoverable=False)
+        raise
 
     ai_message = MessageModel(
         role="assistant",

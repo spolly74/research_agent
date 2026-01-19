@@ -4,7 +4,7 @@
 
 This document provides a comprehensive analysis of the current research agent implementation and a detailed plan to reach the final vision: a multi-agent research system with orchestrated LLM access across Ollama VMs, Claude API fallback, dynamic tool creation, and professional-grade report generation.
 
-**Current Completion: ~88%**
+**Current Completion: ~92%**
 
 ---
 
@@ -867,16 +867,51 @@ frontend/src/
 | 5.2.3 | Implement plan editing UI | ✅ Complete |
 | 5.2.4 | Add plan approval workflow | ✅ Complete |
 
-#### 5.3 Report Viewer
+#### 5.3 Report Viewer ✅
+
+**Goal**: Professional report viewing with navigation, export, and citation features.
+
+**Status**: ✅ Complete
+
+**Implemented Components**:
+
+```
+frontend/src/
+├── api/reports.ts                    # Report API functions
+│   ├── listTemplates()               # List available templates
+│   ├── listScopes()                  # List scope options
+│   ├── formatReport()                # Format report content
+│   ├── parseMarkdownReport()         # Parse markdown to sections
+│   └── exportReport()                # Download as MD/HTML/TXT
+└── components/ReportViewer/
+    ├── index.ts                      # Exports
+    ├── ReportViewer.tsx              # Main viewer with markdown rendering
+    ├── TableOfContents.tsx           # Navigable section list
+    ├── ExportMenu.tsx                # Download dropdown (MD/HTML/TXT)
+    └── CitationTooltip.tsx           # Hover previews for citations
+```
+
+**Features Implemented**:
+
+| Feature | Description |
+|---------|-------------|
+| Markdown Rendering | Full markdown support with react-markdown and remark-gfm |
+| Table of Contents | Collapsible sidebar with scroll-sync highlighting |
+| Export Options | Download as Markdown, HTML, or Plain Text |
+| Print Support | Optimized print styles for PDF export |
+| Citation Tooltips | Hover previews for [1], [2], etc. markers |
+| Reading Progress | Visual progress indicator in TOC |
+| Fullscreen Mode | Expand report to fullscreen view |
+| Copy to Clipboard | One-click copy of report content |
 
 **Tasks**:
 
-| Task | Description | Estimate |
-|------|-------------|----------|
-| 5.3.1 | Create ReportViewer component | 2 hr |
-| 5.3.2 | Add table of contents navigation | 1 hr |
-| 5.3.3 | Implement export buttons (MD/HTML/PDF) | 2 hr |
-| 5.3.4 | Add citation hover previews | 2 hr |
+| Task | Description | Status |
+|------|-------------|--------|
+| 5.3.1 | Create ReportViewer component | ✅ Complete |
+| 5.3.2 | Add table of contents navigation | ✅ Complete |
+| 5.3.3 | Implement export buttons (MD/HTML/PDF) | ✅ Complete |
+| 5.3.4 | Add citation hover previews | ✅ Complete |
 
 #### 5.4 Tool Management UI
 
@@ -1196,6 +1231,16 @@ pytest tests/integration/ -v --timeout=120
 *Last Updated: 2026-01-19*
 
 ## Changelog
+
+### v1.5 (2026-01-19)
+- Completed Phase 5.3: Report Viewer
+  - Created ReportViewer component with full markdown rendering (react-markdown + remark-gfm)
+  - Added TableOfContents with scroll-sync and reading progress indicator
+  - Implemented ExportMenu with Markdown, HTML, and Plain Text download options
+  - Added CitationTooltip for hover previews on citation markers [1], [2], etc.
+  - Integrated ReportViewer into Chat component with automatic report detection
+  - Added fullscreen mode, copy to clipboard, and print support
+- Frontend builds successfully with new dependencies
 
 ### v1.4 (2026-01-19)
 - Completed Phase 5.2: Plan Visualization & Editing

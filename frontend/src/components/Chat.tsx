@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { getSessions, createSession, sendMessage, getSession, deleteSession } from '../api';
 import { cn } from '../lib/utils';
-import { MessageSquare, Send, Plus, Loader2, Trash2, Activity } from 'lucide-react';
+import { MessageSquare, Send, Plus, Loader2, Trash2, Activity, BookOpen, Maximize2 } from 'lucide-react';
 import { StatusDashboard } from './ExecutionStatus';
+import { ReportViewer } from './ReportViewer';
 
 interface Message {
     id: number;
@@ -15,6 +16,13 @@ interface Session {
     title: string;
 }
 
+// Detect if content looks like a report (has markdown headers and is long enough)
+function isReportContent(content: string): boolean {
+    const hasHeaders = /^#{1,3}\s+.+$/m.test(content);
+    const wordCount = content.split(/\s+/).length;
+    return hasHeaders && wordCount > 200;
+}
+
 export default function Chat() {
     const [sessions, setSessions] = useState<Session[]>([]);
     const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
@@ -22,6 +30,7 @@ export default function Chat() {
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [showStatus, setShowStatus] = useState(true);
+    const [expandedReport, setExpandedReport] = useState<number | null>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
 
     // Session ID format used by backend for tracking
@@ -178,33 +187,88 @@ export default function Chat() {
                             </div>
                         </div>
                     ) : (
-                        messages.map((msg) => (
-                            <div
-                                key={msg.id}
-                                className={cn(
-                                    "flex flex-col max-w-3xl mx-auto p-4 rounded-xl transition-all",
-                                    msg.role === 'user'
-                                        ? "bg-gradient-to-r from-slate-800 to-slate-800/80 border border-slate-700/50"
-                                        : "bg-gradient-to-r from-slate-900 to-slate-900/80 border border-slate-700/30"
-                                )}
-                            >
-                                <div className="flex items-center gap-2 mb-2">
-                                    <div className={cn(
-                                        "w-2 h-2 rounded-full",
-                                        msg.role === 'user' ? "bg-blue-500" : "bg-emerald-500"
-                                    )} />
-                                    <span className={cn(
-                                        "text-xs font-mono font-semibold uppercase tracking-wider",
-                                        msg.role === 'user' ? "text-blue-400" : "text-emerald-400"
-                                    )}>
-                                        {msg.role}
-                                    </span>
+                        messages.map((msg) => {
+                            const isReport = msg.role === 'assistant' && isReportContent(msg.content);
+                            const isExpanded = expandedReport === msg.id;
+
+                            // Show fullscreen ReportViewer when expanded
+                            if (isExpanded && isReport) {
+                                return (
+                                    <div key={msg.id} className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-sm p-4">
+                                        <ReportViewer
+                                            content={msg.content}
+                                            className="h-full"
+                                            onClose={() => setExpandedReport(null)}
+                                        />
+                                    </div>
+                                );
+                            }
+
+                            return (
+                                <div
+                                    key={msg.id}
+                                    className={cn(
+                                        "flex flex-col max-w-3xl mx-auto p-4 rounded-xl transition-all",
+                                        msg.role === 'user'
+                                            ? "bg-gradient-to-r from-slate-800 to-slate-800/80 border border-slate-700/50"
+                                            : "bg-gradient-to-r from-slate-900 to-slate-900/80 border border-slate-700/30"
+                                    )}
+                                >
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="flex items-center gap-2">
+                                            <div className={cn(
+                                                "w-2 h-2 rounded-full",
+                                                msg.role === 'user' ? "bg-blue-500" : "bg-emerald-500"
+                                            )} />
+                                            <span className={cn(
+                                                "text-xs font-mono font-semibold uppercase tracking-wider",
+                                                msg.role === 'user' ? "text-blue-400" : "text-emerald-400"
+                                            )}>
+                                                {msg.role}
+                                            </span>
+                                        </div>
+
+                                        {/* Report view button for assistant reports */}
+                                        {isReport && (
+                                            <button
+                                                onClick={() => setExpandedReport(msg.id)}
+                                                className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 transition-colors text-xs font-medium"
+                                            >
+                                                <BookOpen size={12} />
+                                                <span>View Report</span>
+                                                <Maximize2 size={10} />
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {/* Content preview or full content */}
+                                    {isReport ? (
+                                        <div className="relative">
+                                            <div className="prose prose-invert prose-sm whitespace-pre-wrap text-slate-300 max-h-64 overflow-hidden">
+                                                {msg.content.slice(0, 500)}
+                                                {msg.content.length > 500 && '...'}
+                                            </div>
+                                            <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-slate-900 to-transparent pointer-events-none" />
+                                            <div className="mt-2 pt-2 border-t border-slate-700/50 flex items-center justify-between">
+                                                <span className="text-xs font-mono text-slate-500">
+                                                    {msg.content.split(/\s+/).length.toLocaleString()} words
+                                                </span>
+                                                <button
+                                                    onClick={() => setExpandedReport(msg.id)}
+                                                    className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+                                                >
+                                                    Read full report →
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="prose prose-invert prose-sm whitespace-pre-wrap text-slate-300">
+                                            {msg.content}
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="prose prose-invert prose-sm whitespace-pre-wrap text-slate-300">
-                                    {msg.content}
-                                </div>
-                            </div>
-                        ))
+                            );
+                        })
                     )}
                     <div ref={bottomRef} />
                 </div>

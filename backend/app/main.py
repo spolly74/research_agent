@@ -17,12 +17,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from app.api.endpoints import chat, llm, tools, reports
+from app.api.endpoints import chat, llm, tools, reports, status, websocket
 
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(llm.router, prefix="/api/llm", tags=["llm"])
 app.include_router(tools.router, prefix="/api/tools", tags=["tools"])
 app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
+app.include_router(status.router, prefix="/api/status", tags=["status"])
+app.include_router(websocket.router, tags=["websocket"])
 
 
 @app.on_event("startup")
@@ -31,6 +33,10 @@ async def startup_event():
     # Register built-in tools
     from app.agents.tools.registry import register_builtin_tools
     register_builtin_tools()
+
+    # Set up WebSocket handler for execution tracking
+    from app.api.endpoints.websocket import setup_websocket_handler
+    setup_websocket_handler()
 
 
 @app.get("/health")

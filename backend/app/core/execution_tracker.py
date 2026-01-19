@@ -49,6 +49,16 @@ class EventType(str, Enum):
     TOOL_COMPLETED = "tool.completed"
     PLAN_CREATED = "plan.created"
     PLAN_UPDATED = "plan.updated"
+    PLAN_APPROVED = "plan.approved"
+    TASK_UPDATED = "task.updated"
+
+
+class PlanApprovalStatus(str, Enum):
+    """Plan approval states."""
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    MODIFIED = "modified"
 
 
 @dataclass
@@ -81,6 +91,8 @@ class ExecutionStatus:
     session_id: str
     current_phase: ExecutionPhase = ExecutionPhase.INITIALIZING
     plan: Optional[dict] = None
+    plan_approval_status: PlanApprovalStatus = PlanApprovalStatus.PENDING
+    plan_waiting_approval: bool = False
     active_agent: Optional[str] = None
     active_tools: list[str] = field(default_factory=list)
     progress: float = 0.0
@@ -100,6 +112,8 @@ class ExecutionStatus:
             "session_id": self.session_id,
             "current_phase": self.current_phase.value,
             "plan": self.plan,
+            "plan_approval_status": self.plan_approval_status.value,
+            "plan_waiting_approval": self.plan_waiting_approval,
             "active_agent": self.active_agent,
             "active_tools": self.active_tools,
             "progress": self.progress,
@@ -291,13 +305,14 @@ class ExecutionTracker:
             "message": message
         })
 
-    def set_plan(self, session_id: str, plan: dict) -> None:
+    def set_plan(self, session_id: str, plan: dict, require_approval: bool = False) -> None:
         """
         Set the orchestrator's plan for the session.
 
         Args:
             session_id: Session to update
             plan: The plan dictionary
+            require_approval: Whether to wait for user approval before proceeding
         """
         with self._session_lock:
             if session_id not in self._sessions:
@@ -305,14 +320,281 @@ class ExecutionTracker:
 
             status = self._sessions[session_id]
             status.plan = plan
+            status.plan_waiting_approval = require_approval
+            status.plan_approval_status = PlanApprovalStatus.PENDING if require_approval else PlanApprovalStatus.APPROVED
             status.updated_at = datetime.now()
             status.messages.append(f"Plan created: {plan.get('main_goal', 'Unknown goal')}")
 
         self._emit_event(session_id, EventType.PLAN_CREATED, {
             "main_goal": plan.get("main_goal"),
             "task_count": len(plan.get("tasks", [])),
-            "scope": plan.get("scope", {}).get("scope", "standard")
+            "scope": plan.get("scope", {}).get("scope", "standard"),
+            "require_approval": require_approval
         })
+
+    def update_plan_task(
+        self,
+        session_id: str,
+        task_id: int,
+        updates: dict
+    ) -> Optional[dict]:
+        """
+        Update a specific task in the plan.
+
+        Args:
+            session_id: Session to update
+            task_id: ID of the task to update
+            updates: Dictionary of fields to update
+
+        Returns:
+            Updated task or None if not found
+        """
+        with self._session_lock:
+            if session_id not in self._sessions:
+                return None
+
+            status = self._sessions[session_id]
+            if not status.plan or "tasks" not in status.plan:
+                return None
+
+            # Find and update the task
+            for task in status.plan["tasks"]:
+                if task.get("id") == task_id:
+                    # Update allowed fields
+                    allowed_fields = ["description", "assigned_agent", "status", "dependencies"]
+                    for field in allowed_fields:
+                        if field in updates:
+                            task[field] = updates[field]
+
+                    status.updated_at = datetime.now()
+                    status.messages.append(f"Task {task_id} updated")
+
+                    self._emit_event(session_id, EventType.TASK_UPDATED, {
+                        "task_id": task_id,
+                        "updates": updates
+                    })
+
+                    return task
+
+            return None
+
+    def add_plan_task(
+        self,
+        session_id: str,
+        description: str,
+        assigned_agent: str,
+        dependencies: list[int] = None,
+        position: int = None
+    ) -> Optional[dict]:
+        """
+        Add a new task to the plan.
+
+        Args:
+            session_id: Session to update
+            description: Task description
+            assigned_agent: Agent to assign
+            dependencies: List of task IDs this depends on
+            position: Position to insert (None for end)
+
+        Returns:
+            The new task or None if failed
+        """
+        with self._session_lock:
+            if session_id not in self._sessions:
+                return None
+
+            status = self._sessions[session_id]
+            if not status.plan:
+                status.plan = {"main_goal": "", "tasks": []}
+
+            if "tasks" not in status.plan:
+                status.plan["tasks"] = []
+
+            # Generate new task ID
+            existing_ids = [t.get("id", 0) for t in status.plan["tasks"]]
+            new_id = max(existing_ids, default=0) + 1
+
+            new_task = {
+                "id": new_id,
+                "description": description,
+                "assigned_agent": assigned_agent,
+                "status": "pending",
+                "dependencies": dependencies or []
+            }
+
+            # Insert at position or append
+            if position is not None and 0 <= position <= len(status.plan["tasks"]):
+                status.plan["tasks"].insert(position, new_task)
+            else:
+                status.plan["tasks"].append(new_task)
+
+            status.updated_at = datetime.now()
+            status.messages.append(f"Task added: {description[:50]}")
+
+            self._emit_event(session_id, EventType.PLAN_UPDATED, {
+                "action": "task_added",
+                "task": new_task
+            })
+
+            return new_task
+
+    def remove_plan_task(self, session_id: str, task_id: int) -> bool:
+        """
+        Remove a task from the plan.
+
+        Args:
+            session_id: Session to update
+            task_id: ID of the task to remove
+
+        Returns:
+            True if removed, False if not found
+        """
+        with self._session_lock:
+            if session_id not in self._sessions:
+                return False
+
+            status = self._sessions[session_id]
+            if not status.plan or "tasks" not in status.plan:
+                return False
+
+            original_count = len(status.plan["tasks"])
+            status.plan["tasks"] = [
+                t for t in status.plan["tasks"]
+                if t.get("id") != task_id
+            ]
+
+            if len(status.plan["tasks"]) < original_count:
+                # Also remove this task from dependencies of other tasks
+                for task in status.plan["tasks"]:
+                    if task.get("dependencies"):
+                        task["dependencies"] = [
+                            d for d in task["dependencies"]
+                            if d != task_id
+                        ]
+
+                status.updated_at = datetime.now()
+                status.messages.append(f"Task {task_id} removed")
+
+                self._emit_event(session_id, EventType.PLAN_UPDATED, {
+                    "action": "task_removed",
+                    "task_id": task_id
+                })
+
+                return True
+
+            return False
+
+    def reorder_plan_tasks(
+        self,
+        session_id: str,
+        task_order: list[int]
+    ) -> bool:
+        """
+        Reorder tasks in the plan.
+
+        Args:
+            session_id: Session to update
+            task_order: List of task IDs in desired order
+
+        Returns:
+            True if reordered, False if failed
+        """
+        with self._session_lock:
+            if session_id not in self._sessions:
+                return False
+
+            status = self._sessions[session_id]
+            if not status.plan or "tasks" not in status.plan:
+                return False
+
+            # Build lookup of tasks by ID
+            task_lookup = {t.get("id"): t for t in status.plan["tasks"]}
+
+            # Verify all IDs exist
+            if set(task_order) != set(task_lookup.keys()):
+                return False
+
+            # Reorder
+            status.plan["tasks"] = [task_lookup[tid] for tid in task_order]
+            status.updated_at = datetime.now()
+            status.messages.append("Tasks reordered")
+
+            self._emit_event(session_id, EventType.PLAN_UPDATED, {
+                "action": "tasks_reordered",
+                "new_order": task_order
+            })
+
+            return True
+
+    def approve_plan(
+        self,
+        session_id: str,
+        approved: bool = True,
+        modifications: dict = None
+    ) -> bool:
+        """
+        Approve or reject the plan.
+
+        Args:
+            session_id: Session to update
+            approved: Whether to approve the plan
+            modifications: Optional modifications to apply before approval
+
+        Returns:
+            True if successful, False if failed
+        """
+        with self._session_lock:
+            if session_id not in self._sessions:
+                return False
+
+            status = self._sessions[session_id]
+            if not status.plan:
+                return False
+
+            # Apply any modifications
+            if modifications:
+                if "main_goal" in modifications:
+                    status.plan["main_goal"] = modifications["main_goal"]
+                if "tasks" in modifications:
+                    status.plan["tasks"] = modifications["tasks"]
+                status.plan_approval_status = PlanApprovalStatus.MODIFIED
+
+            if approved:
+                status.plan_approval_status = PlanApprovalStatus.APPROVED
+                status.plan_waiting_approval = False
+                status.messages.append("Plan approved")
+            else:
+                status.plan_approval_status = PlanApprovalStatus.REJECTED
+                status.plan_waiting_approval = False
+                status.messages.append("Plan rejected")
+
+            status.updated_at = datetime.now()
+
+        self._emit_event(session_id, EventType.PLAN_APPROVED, {
+            "approved": approved,
+            "modified": modifications is not None,
+            "approval_status": status.plan_approval_status.value
+        })
+
+        return True
+
+    def is_plan_approved(self, session_id: str) -> bool:
+        """
+        Check if the plan is approved.
+
+        Args:
+            session_id: Session to check
+
+        Returns:
+            True if plan is approved
+        """
+        status = self._sessions.get(session_id)
+        if not status:
+            return False
+        return status.plan_approval_status in [
+            PlanApprovalStatus.APPROVED,
+            PlanApprovalStatus.MODIFIED
+        ]
 
     def set_active_agent(
         self,

@@ -8,12 +8,41 @@ Provides REST endpoints for:
 """
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from typing import Any, Optional
 import structlog
 
-from app.core.execution_tracker import get_execution_tracker, ExecutionPhase
+from app.core.execution_tracker import get_execution_tracker, ExecutionPhase, PlanApprovalStatus
 from app.core.database import SessionLocal
 from app.models.graph_state import SessionRecovery, GraphCheckpoint
+
+
+# Request models for plan management
+class TaskUpdate(BaseModel):
+    """Request body for updating a task."""
+    description: Optional[str] = None
+    assigned_agent: Optional[str] = None
+    status: Optional[str] = None
+    dependencies: Optional[list[int]] = None
+
+
+class TaskCreate(BaseModel):
+    """Request body for creating a task."""
+    description: str
+    assigned_agent: str
+    dependencies: Optional[list[int]] = None
+    position: Optional[int] = None
+
+
+class TaskReorder(BaseModel):
+    """Request body for reordering tasks."""
+    task_order: list[int]
+
+
+class PlanApproval(BaseModel):
+    """Request body for approving/rejecting a plan."""
+    approved: bool
+    modifications: Optional[dict] = None
 
 logger = structlog.get_logger(__name__)
 
@@ -113,7 +142,189 @@ def get_session_plan(session_id: str) -> dict[str, Any]:
     return {
         "success": True,
         "session_id": session_id,
+        "plan": status.plan,
+        "approval_status": status.plan_approval_status.value,
+        "waiting_approval": status.plan_waiting_approval
+    }
+
+
+@router.put("/{session_id}/plan/task/{task_id}")
+def update_plan_task(session_id: str, task_id: int, task_update: TaskUpdate) -> dict[str, Any]:
+    """
+    Update a specific task in the plan.
+
+    Args:
+        session_id: The session identifier
+        task_id: The task ID to update
+        task_update: The fields to update
+
+    Returns:
+        Updated task
+    """
+    tracker = get_execution_tracker()
+    status = tracker.get_status(session_id)
+
+    if not status:
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+
+    if not status.plan:
+        raise HTTPException(status_code=404, detail="No plan exists for this session")
+
+    # Convert to dict, excluding None values
+    updates = {k: v for k, v in task_update.model_dump().items() if v is not None}
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No updates provided")
+
+    updated_task = tracker.update_plan_task(session_id, task_id, updates)
+
+    if not updated_task:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+    return {
+        "success": True,
+        "session_id": session_id,
+        "task": updated_task
+    }
+
+
+@router.post("/{session_id}/plan/task")
+def add_plan_task(session_id: str, task_create: TaskCreate) -> dict[str, Any]:
+    """
+    Add a new task to the plan.
+
+    Args:
+        session_id: The session identifier
+        task_create: The task to create
+
+    Returns:
+        Created task
+    """
+    tracker = get_execution_tracker()
+    status = tracker.get_status(session_id)
+
+    if not status:
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+
+    new_task = tracker.add_plan_task(
+        session_id=session_id,
+        description=task_create.description,
+        assigned_agent=task_create.assigned_agent,
+        dependencies=task_create.dependencies,
+        position=task_create.position
+    )
+
+    if not new_task:
+        raise HTTPException(status_code=500, detail="Failed to create task")
+
+    return {
+        "success": True,
+        "session_id": session_id,
+        "task": new_task
+    }
+
+
+@router.delete("/{session_id}/plan/task/{task_id}")
+def remove_plan_task(session_id: str, task_id: int) -> dict[str, Any]:
+    """
+    Remove a task from the plan.
+
+    Args:
+        session_id: The session identifier
+        task_id: The task ID to remove
+
+    Returns:
+        Success confirmation
+    """
+    tracker = get_execution_tracker()
+    status = tracker.get_status(session_id)
+
+    if not status:
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+
+    if not status.plan:
+        raise HTTPException(status_code=404, detail="No plan exists for this session")
+
+    success = tracker.remove_plan_task(session_id, task_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+    return {
+        "success": True,
+        "session_id": session_id,
+        "message": f"Task {task_id} removed"
+    }
+
+
+@router.put("/{session_id}/plan/reorder")
+def reorder_plan_tasks(session_id: str, reorder: TaskReorder) -> dict[str, Any]:
+    """
+    Reorder tasks in the plan.
+
+    Args:
+        session_id: The session identifier
+        reorder: The new task order
+
+    Returns:
+        Updated plan
+    """
+    tracker = get_execution_tracker()
+    status = tracker.get_status(session_id)
+
+    if not status:
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+
+    if not status.plan:
+        raise HTTPException(status_code=404, detail="No plan exists for this session")
+
+    success = tracker.reorder_plan_tasks(session_id, reorder.task_order)
+
+    if not success:
+        raise HTTPException(status_code=400, detail="Invalid task order - all task IDs must be present")
+
+    return {
+        "success": True,
+        "session_id": session_id,
         "plan": status.plan
+    }
+
+
+@router.post("/{session_id}/plan/approve")
+def approve_plan(session_id: str, approval: PlanApproval) -> dict[str, Any]:
+    """
+    Approve or reject the research plan.
+
+    Args:
+        session_id: The session identifier
+        approval: Approval decision and optional modifications
+
+    Returns:
+        Approval result
+    """
+    tracker = get_execution_tracker()
+    status = tracker.get_status(session_id)
+
+    if not status:
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+
+    if not status.plan:
+        raise HTTPException(status_code=404, detail="No plan exists for this session")
+
+    success = tracker.approve_plan(
+        session_id=session_id,
+        approved=approval.approved,
+        modifications=approval.modifications
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update plan approval status")
+
+    return {
+        "success": True,
+        "session_id": session_id,
+        "approved": approval.approved,
+        "approval_status": tracker.get_status(session_id).plan_approval_status.value
     }
 
 

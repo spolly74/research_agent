@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { getSessions, createSession, sendMessage, getSession, deleteSession } from '../api';
 import { cn } from '../lib/utils';
-import { MessageSquare, Send, Plus, Loader2, Trash2 } from 'lucide-react';
+import { MessageSquare, Send, Plus, Loader2, Trash2, Activity } from 'lucide-react';
+import { StatusDashboard } from './ExecutionStatus';
 
 interface Message {
     id: number;
@@ -20,7 +21,11 @@ export default function Chat() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
+    const [showStatus, setShowStatus] = useState(true);
     const bottomRef = useRef<HTMLDivElement>(null);
+
+    // Session ID format used by backend for tracking
+    const trackingSessionId = currentSessionId ? `chat-${currentSessionId}` : null;
 
     useEffect(() => {
         loadSessions();
@@ -77,6 +82,7 @@ export default function Chat() {
         setMessages(prev => [...prev, userMsg]);
         setInput("");
         setLoading(true);
+        setShowStatus(true); // Show status dashboard when processing
 
         try {
             await sendMessage(currentSessionId, userMsg.content);
@@ -91,10 +97,10 @@ export default function Chat() {
     return (
         <div className="flex h-screen bg-slate-900 text-slate-100 font-sans">
             {/* Sidebar */}
-            <div className="w-64 border-r border-slate-800 p-4 flex flex-col">
+            <div className="w-64 border-r border-slate-800 p-4 flex flex-col bg-slate-950/50">
                 <button
                     onClick={handleNewChat}
-                    className="flex items-center gap-2 w-full p-2 bg-slate-800 hover:bg-slate-700 rounded-md transition-colors text-sm font-medium"
+                    className="flex items-center gap-2 w-full p-2.5 bg-gradient-to-r from-cyan-600/20 to-blue-600/20 hover:from-cyan-600/30 hover:to-blue-600/30 border border-cyan-500/30 rounded-lg transition-all text-sm font-medium text-cyan-400"
                 >
                     <Plus size={16} /> New Research Task
                 </button>
@@ -105,8 +111,10 @@ export default function Chat() {
                             key={session.id}
                             onClick={() => setCurrentSessionId(session.id)}
                             className={cn(
-                                "flex items-center justify-between w-full text-left p-2 rounded-md text-sm transition-colors group",
-                                currentSessionId === session.id ? "bg-slate-800 text-blue-400" : "hover:bg-slate-800/50 text-slate-400"
+                                "flex items-center justify-between w-full text-left p-2.5 rounded-lg text-sm transition-all group",
+                                currentSessionId === session.id
+                                    ? "bg-slate-800/80 text-cyan-400 border border-cyan-500/20"
+                                    : "hover:bg-slate-800/50 text-slate-400 border border-transparent"
                             )}
                         >
                             <div className="flex items-center truncate">
@@ -125,29 +133,74 @@ export default function Chat() {
                         </button>
                     ))}
                 </div>
+
+                {/* Status toggle */}
+                {loading && (
+                    <button
+                        onClick={() => setShowStatus(!showStatus)}
+                        className={cn(
+                            "mt-2 flex items-center gap-2 w-full p-2 rounded-lg text-xs font-mono transition-colors",
+                            showStatus
+                                ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/30"
+                                : "bg-slate-800/50 text-slate-500 border border-slate-700/50"
+                        )}
+                    >
+                        <Activity size={12} className={showStatus ? "animate-pulse" : ""} />
+                        <span>{showStatus ? "Status: ON" : "Status: OFF"}</span>
+                    </button>
+                )}
             </div>
 
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col">
+                {/* Status Dashboard - Shows when processing */}
+                {loading && showStatus && trackingSessionId && (
+                    <div className="border-b border-slate-700/50 p-4 bg-slate-900/50">
+                        <StatusDashboard
+                            sessionId={trackingSessionId}
+                            isProcessing={loading}
+                        />
+                    </div>
+                )}
+
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                     {messages.length === 0 ? (
-                        <div className="h-full flex items-center justify-center text-slate-500 flex-col gap-2">
-                            <MessageSquare size={48} className="opacity-20" />
-                            <p>Select a task or start a new one to begin research.</p>
+                        <div className="h-full flex items-center justify-center text-slate-500 flex-col gap-4">
+                            <div className="relative">
+                                <MessageSquare size={64} className="opacity-10" />
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <div className="w-4 h-4 rounded-full bg-cyan-500/20 animate-ping" />
+                                </div>
+                            </div>
+                            <div className="text-center">
+                                <p className="text-lg font-medium text-slate-400">Research Agent Ready</p>
+                                <p className="text-sm text-slate-600 mt-1">Start a new task or select an existing one</p>
+                            </div>
                         </div>
                     ) : (
                         messages.map((msg) => (
                             <div
                                 key={msg.id}
                                 className={cn(
-                                    "flex flex-col max-w-3xl mx-auto p-4 rounded-lg",
-                                    msg.role === 'user' ? "bg-slate-800 items-end" : "bg-slate-900 items-start"
+                                    "flex flex-col max-w-3xl mx-auto p-4 rounded-xl transition-all",
+                                    msg.role === 'user'
+                                        ? "bg-gradient-to-r from-slate-800 to-slate-800/80 border border-slate-700/50"
+                                        : "bg-gradient-to-r from-slate-900 to-slate-900/80 border border-slate-700/30"
                                 )}
                             >
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className={cn("text-xs font-bold uppercase", msg.role === 'user' ? "text-blue-400" : "text-green-400")}>{msg.role}</span>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <div className={cn(
+                                        "w-2 h-2 rounded-full",
+                                        msg.role === 'user' ? "bg-blue-500" : "bg-emerald-500"
+                                    )} />
+                                    <span className={cn(
+                                        "text-xs font-mono font-semibold uppercase tracking-wider",
+                                        msg.role === 'user' ? "text-blue-400" : "text-emerald-400"
+                                    )}>
+                                        {msg.role}
+                                    </span>
                                 </div>
-                                <div className="prose prose-invert prose-sm whitespace-pre-wrap">
+                                <div className="prose prose-invert prose-sm whitespace-pre-wrap text-slate-300">
                                     {msg.content}
                                 </div>
                             </div>
@@ -157,7 +210,7 @@ export default function Chat() {
                 </div>
 
                 {/* Input Area */}
-                <div className="p-4 border-t border-slate-800 bg-slate-900">
+                <div className="p-4 border-t border-slate-700/50 bg-gradient-to-t from-slate-950 to-slate-900">
                     <div className="max-w-3xl mx-auto relative flex items-center">
                         <input
                             type="text"
@@ -166,16 +219,44 @@ export default function Chat() {
                             onKeyDown={(e) => e.key === 'Enter' && !loading && handleSend()}
                             placeholder="What do you want to research?"
                             disabled={loading || !currentSessionId}
-                            className="w-full bg-slate-800 border-none rounded-lg py-3 px-4 pr-12 text-slate-200 placeholder-slate-500 focus:ring-1 focus:ring-blue-500"
+                            className={cn(
+                                "w-full bg-slate-800/80 border border-slate-700/50 rounded-xl py-3.5 px-5 pr-14",
+                                "text-slate-200 placeholder-slate-500",
+                                "focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/50 focus:outline-none",
+                                "transition-all duration-200",
+                                "disabled:opacity-50 disabled:cursor-not-allowed"
+                            )}
                         />
                         <button
                             onClick={handleSend}
                             disabled={loading || !currentSessionId || !input.trim()}
-                            className="absolute right-2 p-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 rounded-md transition-colors"
+                            className={cn(
+                                "absolute right-2 p-2.5 rounded-lg transition-all duration-200",
+                                "bg-gradient-to-r from-cyan-600 to-blue-600",
+                                "hover:from-cyan-500 hover:to-blue-500",
+                                "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-cyan-600 disabled:hover:to-blue-600",
+                                "shadow-lg shadow-cyan-500/20"
+                            )}
                         >
-                            {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                            {loading ? (
+                                <Loader2 size={16} className="animate-spin text-white" />
+                            ) : (
+                                <Send size={16} className="text-white" />
+                            )}
                         </button>
                     </div>
+
+                    {/* Processing indicator */}
+                    {loading && (
+                        <div className="max-w-3xl mx-auto mt-3 flex items-center gap-2 text-xs font-mono text-cyan-500">
+                            <div className="flex gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+                                <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+                                <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+                            </div>
+                            <span>Processing research request...</span>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

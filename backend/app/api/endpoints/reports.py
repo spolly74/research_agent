@@ -21,6 +21,9 @@ class ReportOutlineRequest(BaseModel):
     research_data: list[str] = Field(..., description="List of research findings/data")
     report_type: Optional[str] = Field(default=None, description="Report type: research, technical, executive")
     metadata: Optional[dict] = Field(default=None, description="Additional metadata")
+    scope: Optional[str] = Field(default=None, description="Report scope: brief, standard, comprehensive")
+    target_pages: Optional[int] = Field(default=None, description="Custom target page count")
+    target_word_count: Optional[int] = Field(default=None, description="Custom target word count")
 
 
 class ReportFormatRequest(BaseModel):
@@ -30,6 +33,9 @@ class ReportFormatRequest(BaseModel):
     report_type: Optional[str] = Field(default=None, description="Report type")
     format: str = Field(default="markdown", description="Output format: markdown or html")
     include_toc: bool = Field(default=True, description="Include table of contents")
+    scope: Optional[str] = Field(default=None, description="Report scope: brief, standard, comprehensive")
+    target_pages: Optional[int] = Field(default=None, description="Custom target page count")
+    target_word_count: Optional[int] = Field(default=None, description="Custom target word count")
 
 
 class CitationAddRequest(BaseModel):
@@ -46,6 +52,49 @@ class CitationAddRequest(BaseModel):
 class CitationStyleRequest(BaseModel):
     """Request to change citation style."""
     style: str = Field(..., description="Citation style: apa, mla, chicago, ieee")
+
+
+@router.get("/scopes")
+def list_scopes() -> dict[str, Any]:
+    """
+    List available report scope levels.
+
+    Returns information about each scope including:
+    - Target page count and word count
+    - Number of sources expected
+    - Section depth
+    """
+    from app.reports.scope_config import ReportScope, SCOPE_DEFAULTS
+
+    scopes = {}
+    for scope, params in SCOPE_DEFAULTS.items():
+        scopes[scope.value] = {
+            "name": scope.value.title(),
+            "target_pages": params.target_pages,
+            "target_word_count": params.target_word_count,
+            "min_sources": params.min_sources,
+            "max_sources": params.max_sources,
+            "section_depth": params.section_depth,
+            "description": _get_scope_description(scope)
+        }
+
+    return {
+        "scopes": scopes,
+        "count": len(scopes),
+        "note": "Use 'custom' scope with target_pages or target_word_count for custom lengths"
+    }
+
+
+def _get_scope_description(scope) -> str:
+    """Get description for a scope level."""
+    from app.reports.scope_config import ReportScope
+
+    descriptions = {
+        ReportScope.BRIEF: "Quick 1-2 page summary with key points only",
+        ReportScope.STANDARD: "Balanced 3-5 page report with full coverage",
+        ReportScope.COMPREHENSIVE: "Detailed 10-15 page analysis with thorough research"
+    }
+    return descriptions.get(scope, "Custom scope")
 
 
 @router.get("/templates")
@@ -145,9 +194,16 @@ def create_outline(request: ReportOutlineRequest) -> dict[str, Any]:
 
     Returns the outline structure without generated content.
     Content must be generated separately using the editor agent.
+
+    Scope can be specified as:
+    - "brief": 1-2 pages, key points only
+    - "standard": 3-5 pages, balanced coverage
+    - "comprehensive": 10-15 pages, detailed analysis
+    - Or use target_pages/target_word_count for custom length
     """
     from app.reports.templates.base import ReportType
     from app.reports.generator import ReportGenerator
+    from app.reports.scope_config import create_scope_config, ReportScope
 
     # Map string to enum if provided
     report_type = None
@@ -161,7 +217,15 @@ def create_outline(request: ReportOutlineRequest) -> dict[str, Any]:
             raise HTTPException(status_code=400, detail=f"Invalid report type '{request.report_type}'")
         report_type = type_map[request.report_type.lower()]
 
-    generator = ReportGenerator()
+    # Create scope configuration
+    scope_config = create_scope_config(
+        scope=request.scope,
+        pages=request.target_pages,
+        word_count=request.target_word_count,
+        query=request.title
+    )
+
+    generator = ReportGenerator(scope=scope_config)
     outline = generator.create_outline(
         title=request.title,
         research_data=request.research_data,
@@ -172,6 +236,7 @@ def create_outline(request: ReportOutlineRequest) -> dict[str, Any]:
     return {
         "success": True,
         "outline": outline.to_dict(),
+        "scope": scope_config.to_dict(),
         "generator_status": generator.get_status()
     }
 
@@ -183,9 +248,12 @@ def format_report(request: ReportFormatRequest) -> dict[str, Any]:
 
     Note: This creates the outline structure but does NOT generate content.
     For full content generation, use the /api/chat endpoint with a report request.
+
+    Supports scope configuration for controlling report length.
     """
     from app.reports.templates.base import ReportType
     from app.reports.generator import ReportGenerator
+    from app.reports.scope_config import create_scope_config
 
     # Map string to enum if provided
     report_type = None
@@ -198,7 +266,15 @@ def format_report(request: ReportFormatRequest) -> dict[str, Any]:
         if request.report_type.lower() in type_map:
             report_type = type_map[request.report_type.lower()]
 
-    generator = ReportGenerator()
+    # Create scope configuration
+    scope_config = create_scope_config(
+        scope=request.scope,
+        pages=request.target_pages,
+        word_count=request.target_word_count,
+        query=request.title
+    )
+
+    generator = ReportGenerator(scope=scope_config)
     outline = generator.create_outline(
         title=request.title,
         research_data=request.research_data,
@@ -215,6 +291,7 @@ def format_report(request: ReportFormatRequest) -> dict[str, Any]:
         "success": True,
         "format": request.format,
         "report_type": outline.report_type.value,
+        "scope": scope_config.to_dict(),
         "content": formatted,
         "word_count": outline.total_word_count(),
         "sections": len(outline.sections)
@@ -371,10 +448,11 @@ def generate_bibliography(request: CitationStyleRequest = None) -> dict[str, Any
 @router.get("/analyze-query")
 def analyze_query(query: str) -> dict[str, Any]:
     """
-    Analyze a query to determine the best report type and format.
+    Analyze a query to determine the best report type, format, and scope.
     """
     from app.reports.generator import ReportGenerator
     from app.agents.nodes.editor import determine_report_format
+    from app.reports.scope_config import detect_scope_from_query, create_scope_config
 
     generator = ReportGenerator()
 
@@ -384,19 +462,30 @@ def analyze_query(query: str) -> dict[str, Any]:
     # Determine format (brief vs full report)
     response_format = determine_report_format(query, [])
 
+    # Detect scope from query
+    detected_scope, custom_pages = detect_scope_from_query(query)
+    scope_config = create_scope_config(query=query)
+
     return {
         "query": query,
         "recommended_report_type": report_type.value,
         "recommended_format": response_format,
+        "recommended_scope": {
+            "scope": detected_scope.value,
+            "custom_pages": custom_pages,
+            "target_word_count": scope_config.parameters.target_word_count,
+            "target_pages": scope_config.parameters.target_pages
+        },
         "analysis": {
             "suggests_full_report": response_format == "full_report",
             "template_match": report_type.value,
-            "reasoning": _get_recommendation_reasoning(query, report_type.value, response_format)
+            "scope_match": detected_scope.value,
+            "reasoning": _get_recommendation_reasoning(query, report_type.value, response_format, detected_scope.value)
         }
     }
 
 
-def _get_recommendation_reasoning(query: str, report_type: str, response_format: str) -> str:
+def _get_recommendation_reasoning(query: str, report_type: str, response_format: str, scope: str = "standard") -> str:
     """Generate reasoning for the recommendation."""
     reasons = []
 
@@ -414,5 +503,13 @@ def _get_recommendation_reasoning(query: str, report_type: str, response_format:
         reasons.append("Query suggests executive-level summary")
     else:
         reasons.append("Standard research report format recommended")
+
+    # Add scope reasoning
+    if scope == "brief":
+        reasons.append("Brief scope detected from keywords like 'quick', 'summary', 'overview'")
+    elif scope == "comprehensive":
+        reasons.append("Comprehensive scope detected from keywords like 'detailed', 'in-depth', 'thorough'")
+    elif scope == "custom":
+        reasons.append("Custom scope detected from explicit page/word count in query")
 
     return "; ".join(reasons) if reasons else "Default recommendation based on query structure"

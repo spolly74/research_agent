@@ -1,8 +1,13 @@
 from langchain_core.messages import SystemMessage
+import structlog
+
 from app.agents.state import AgentState
 from app.core.llm_manager import get_llm, TaskType, analyze_complexity
+from app.models.plan import Plan, Task, ScopeInfo, ResearchParameters
+from app.reports.scope_config import detect_scope_from_query, create_scope_config
 
-from app.models.plan import Plan, Task
+logger = structlog.get_logger(__name__)
+
 
 def orchestrator_node(state: AgentState):
     messages = state["messages"]
@@ -10,6 +15,17 @@ def orchestrator_node(state: AgentState):
     # Analyze complexity of the user's request
     user_message = messages[-1].content if messages else ""
     complexity = analyze_complexity(user_message)
+
+    # Detect scope from user's request
+    scope_config = create_scope_config(query=user_message)
+    research_params = scope_config.get_research_parameters()
+
+    logger.info(
+        "Orchestrator analyzing request",
+        complexity=complexity.score,
+        scope=scope_config.scope.value,
+        target_words=scope_config.parameters.target_word_count
+    )
 
     # Get LLM with task-appropriate routing
     llm = get_llm(
@@ -19,7 +35,10 @@ def orchestrator_node(state: AgentState):
     )
     structured_llm = llm.with_structured_output(Plan)
 
-    system_msg = SystemMessage(content="""
+    # Build scope-aware system prompt
+    scope_guidance = _get_scope_guidance(scope_config)
+
+    system_msg = SystemMessage(content=f"""
     You are the Chief Research Orchestrator.
     Your goal is to break down a user's request into a detailed, step-by-step RESEARCH PLAN.
 
@@ -31,21 +50,86 @@ def orchestrator_node(state: AgentState):
        - 'reviewer': For critiquing research or code.
        - 'editor': For compiling the final answer.
 
+    {scope_guidance}
+
     Ensure the plan is logical and covers all aspects of the request.
     """)
 
     # If we already have a plan, we might be here to update it (future logic),
     # but for now, we only generate it once at the start.
     if state.get("plan"):
-        print("--- Orchestrator: Plan already exists. Skipping generation. ---")
+        logger.info("Plan already exists, skipping generation")
         return {"next_step": "PLAN_EXISTING"}
 
-    print("--- Orchestrator: Generating Research Plan ---")
+    logger.info("Generating research plan")
     plan = structured_llm.invoke([system_msg] + messages)
 
-    # Log the plan for debugging
-    print(f"--- Orchestrator: Created Plan with {len(plan.tasks)} tasks. Main Goal: {plan.main_goal} ---")
-    for t in plan.tasks:
-        print(f"  [{t.id}] {t.status.upper()}: {t.description} ({t.assigned_agent})")
+    # Add scope information to the plan
+    plan.scope = ScopeInfo(
+        scope=scope_config.scope.value,
+        target_pages=scope_config.parameters.target_pages,
+        target_word_count=scope_config.parameters.target_word_count,
+        research_params=ResearchParameters(
+            min_sources=research_params["min_sources"],
+            max_sources=research_params["max_sources"],
+            depth=research_params["depth"],
+            focus=research_params["focus"]
+        )
+    )
 
-    return {"plan": plan.model_dump(), "next_step": "PLAN_CREATED"}
+    # Log the plan for debugging
+    logger.info(
+        "Plan created",
+        task_count=len(plan.tasks),
+        main_goal=plan.main_goal,
+        scope=plan.scope.scope
+    )
+    for t in plan.tasks:
+        logger.debug(
+            "Plan task",
+            task_id=t.id,
+            status=t.status,
+            description=t.description,
+            agent=t.assigned_agent
+        )
+
+    return {
+        "plan": plan.model_dump(),
+        "next_step": "PLAN_CREATED",
+        "scope_config": scope_config.to_dict()
+    }
+
+
+def _get_scope_guidance(scope_config) -> str:
+    """Generate scope-specific guidance for the orchestrator."""
+    params = scope_config.parameters
+
+    if scope_config.scope.value == "brief":
+        return f"""
+    ## Report Scope: BRIEF (1-2 pages)
+    - This is a brief report request. Plan for a quick, focused research effort.
+    - Target {params.min_sources}-{params.max_sources} sources maximum.
+    - Focus on gathering key facts only - no deep dives.
+    - The editor should produce a concise summary.
+    - Skip detailed methodology or extensive background research.
+    """
+
+    elif scope_config.scope.value == "comprehensive":
+        return f"""
+    ## Report Scope: COMPREHENSIVE (10-15 pages)
+    - This is a comprehensive report request. Plan for thorough, detailed research.
+    - Target {params.min_sources}-{params.max_sources} sources.
+    - Include multiple research tasks to cover different aspects.
+    - Include tasks for methodology and background research.
+    - The editor should produce a detailed, well-structured report.
+    - Consider adding a reviewer task to ensure quality.
+    """
+
+    else:  # standard or custom
+        return f"""
+    ## Report Scope: STANDARD (3-5 pages)
+    - This is a standard report request. Plan for balanced research.
+    - Target {params.min_sources}-{params.max_sources} sources.
+    - Cover the main aspects without excessive detail.
+    - The editor should produce a balanced, informative report.
+    """

@@ -1,6 +1,7 @@
-from typing import TypedDict, Annotated, List, Union
+from typing import TypedDict, Annotated, List, Union, Optional
 from langchain_core.messages import BaseMessage
 import operator
+
 
 class AgentState(TypedDict):
     messages: Annotated[List[BaseMessage], operator.add]
@@ -10,3 +11,4 @@ class AgentState(TypedDict):
     code_output: str
     final_report: str
     plan: dict  # serialized Plan model
+    scope_config: Optional[dict]  # scope configuration from orchestrator

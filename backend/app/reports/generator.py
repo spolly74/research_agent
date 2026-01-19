@@ -3,7 +3,7 @@ Report Generator
 
 Orchestrates the complete report generation process:
 1. Template selection
-2. Outline creation
+2. Outline creation with scope-based scaling
 3. Section-by-section content generation
 4. Citation management
 5. Formatting and output
@@ -12,6 +12,7 @@ Orchestrates the complete report generation process:
 from typing import Optional, Callable
 from datetime import datetime
 import structlog
+from copy import deepcopy
 
 from app.reports.templates.base import (
     ReportTemplate, ReportOutline, ReportSection, SectionType, ReportType
@@ -22,6 +23,7 @@ from app.reports.templates.executive_summary import ExecutiveSummaryTemplate
 from app.reports.citation_manager import CitationManager, CitationStyle
 from app.reports.formatters.markdown import MarkdownFormatter, format_report_as_markdown
 from app.reports.formatters.html import HTMLFormatter, format_report_as_html
+from app.reports.scope_config import ScopeConfig, ReportScope, create_scope_config, detect_scope_from_query
 
 logger = structlog.get_logger(__name__)
 
@@ -35,6 +37,11 @@ class ReportGenerator:
         outline = generator.create_outline("Report Title", research_data, ReportType.RESEARCH)
         # Generate content for each section using LLM
         markdown = generator.format_as_markdown(outline)
+
+    With scope configuration:
+        generator = ReportGenerator()
+        generator.set_scope(ReportScope.COMPREHENSIVE)
+        outline = generator.create_outline(...)
     """
 
     # Available templates
@@ -44,9 +51,69 @@ class ReportGenerator:
         ReportType.EXECUTIVE: ExecutiveSummaryTemplate,
     }
 
-    def __init__(self, citation_style: CitationStyle = CitationStyle.APA):
+    def __init__(
+        self,
+        citation_style: CitationStyle = CitationStyle.APA,
+        scope: Optional[ScopeConfig] = None
+    ):
         self.citation_manager = CitationManager(style=citation_style)
         self._templates: dict[ReportType, ReportTemplate] = {}
+        self._scope: Optional[ScopeConfig] = scope
+
+    def set_scope(
+        self,
+        scope: Optional[ReportScope] = None,
+        pages: Optional[int] = None,
+        word_count: Optional[int] = None,
+        query: Optional[str] = None
+    ) -> ScopeConfig:
+        """
+        Set the scope configuration for report generation.
+
+        Args:
+            scope: ReportScope enum value
+            pages: Custom page count
+            word_count: Custom word count
+            query: Query to detect scope from
+
+        Returns:
+            The configured ScopeConfig
+        """
+        if scope:
+            self._scope = ScopeConfig(scope=scope, custom_pages=pages, custom_word_count=word_count)
+        elif pages or word_count:
+            self._scope = ScopeConfig(scope=ReportScope.CUSTOM, custom_pages=pages, custom_word_count=word_count)
+        elif query:
+            self._scope = create_scope_config(query=query)
+        else:
+            self._scope = ScopeConfig(scope=ReportScope.STANDARD)
+
+        logger.info(
+            "Scope configuration set",
+            scope=self._scope.scope.value,
+            target_words=self._scope.parameters.target_word_count
+        )
+        return self._scope
+
+    def get_scope(self) -> Optional[ScopeConfig]:
+        """Get current scope configuration."""
+        return self._scope
+
+    def get_research_parameters(self) -> dict:
+        """
+        Get parameters to guide research depth based on scope.
+
+        Returns dict with min/max sources, depth level, etc.
+        """
+        if self._scope:
+            return self._scope.get_research_parameters()
+        # Default parameters
+        return {
+            "min_sources": 5,
+            "max_sources": 10,
+            "depth": "balanced",
+            "focus": "balanced"
+        }
 
     def get_template(self, report_type: ReportType) -> ReportTemplate:
         """Get or create a template instance."""
@@ -101,7 +168,8 @@ class ReportGenerator:
         title: str,
         research_data: list[str],
         report_type: Optional[ReportType] = None,
-        metadata: Optional[dict] = None
+        metadata: Optional[dict] = None,
+        scope: Optional[ScopeConfig] = None
     ) -> ReportOutline:
         """
         Create a report outline from research data.
@@ -111,10 +179,19 @@ class ReportGenerator:
             research_data: List of research findings
             report_type: Type of report (auto-detected if None)
             metadata: Additional metadata
+            scope: Scope configuration (uses instance scope if not provided)
 
         Returns:
             ReportOutline ready for content generation
         """
+        # Use provided scope or instance scope
+        active_scope = scope or self._scope
+
+        # Auto-detect scope from title if not set
+        if active_scope is None:
+            active_scope = create_scope_config(query=title)
+            self._scope = active_scope
+
         # Auto-select template if not specified
         if report_type is None:
             report_type = self.select_template(title, research_data)
@@ -123,6 +200,9 @@ class ReportGenerator:
         template = self.get_template(report_type)
         outline = template.create_outline(title, research_data, metadata)
 
+        # Apply scope-based scaling to sections
+        outline = self._apply_scope_to_outline(outline, active_scope)
+
         # Extract citations from research data
         self._extract_citations_from_data(research_data)
 
@@ -130,9 +210,46 @@ class ReportGenerator:
             "Report outline created",
             title=title,
             report_type=report_type.value,
+            scope=active_scope.scope.value,
             sections=len(outline.sections),
+            target_words=active_scope.parameters.target_word_count,
             citations=len(self.citation_manager.get_all_citations())
         )
+
+        return outline
+
+    def _apply_scope_to_outline(self, outline: ReportOutline, scope: ScopeConfig) -> ReportOutline:
+        """
+        Apply scope configuration to an outline.
+
+        Adjusts word counts and filters sections based on scope.
+        """
+        filtered_sections = []
+
+        for section in outline.sections:
+            # Check if section should be included for this scope
+            if not scope.should_include_section(section.section_type.value):
+                logger.debug(
+                    "Excluding section based on scope",
+                    section=section.title,
+                    scope=scope.scope.value
+                )
+                continue
+
+            # Scale word count target
+            if section.word_count_target:
+                section.word_count_target = scope.scale_section_word_count(section.word_count_target)
+
+            filtered_sections.append(section)
+
+        # Re-number section order
+        for i, section in enumerate(filtered_sections, 1):
+            section.order = i
+
+        outline.sections = filtered_sections
+
+        # Add scope info to metadata
+        outline.metadata["scope"] = scope.to_dict()
 
         return outline
 
@@ -182,15 +299,27 @@ class ReportGenerator:
         else:
             previous_summary = "This is the first section."
 
+        # Get scope instructions if available
+        scope_instructions = ""
+        if self._scope:
+            scope_instructions = self._scope.get_editor_instructions()
+
         context = {
             "title": outline.title,
             "report_type": outline.report_type.value,
             "research_data": research_data,
             "previous_sections_summary": previous_summary,
-            "citations": [c.to_dict() for c in self.citation_manager.get_all_citations()]
+            "citations": [c.to_dict() for c in self.citation_manager.get_all_citations()],
+            "scope_instructions": scope_instructions
         }
 
-        return template.get_writing_prompt(section, context)
+        base_prompt = template.get_writing_prompt(section, context)
+
+        # Prepend scope instructions if available
+        if scope_instructions:
+            return f"{scope_instructions}\n\n{base_prompt}"
+
+        return base_prompt
 
     def update_section_content(
         self,
@@ -234,18 +363,26 @@ class ReportGenerator:
 
     def get_status(self) -> dict:
         """Get generator status."""
-        return {
+        status = {
             "citation_count": len(self.citation_manager.get_all_citations()),
             "citation_style": self.citation_manager.style.value,
             "available_templates": [t.value for t in self.TEMPLATES.keys()]
         }
+
+        if self._scope:
+            status["scope"] = self._scope.to_dict()
+
+        return status
 
 
 def create_report_from_research(
     title: str,
     research_data: list[str],
     report_type: Optional[ReportType] = None,
-    format_type: str = "markdown"
+    format_type: str = "markdown",
+    scope: Optional[str] = None,
+    pages: Optional[int] = None,
+    word_count: Optional[int] = None
 ) -> tuple[ReportOutline, str]:
     """
     Convenience function to create a report structure from research.
@@ -258,11 +395,24 @@ def create_report_from_research(
         research_data: Research findings
         report_type: Type of report
         format_type: Output format ("markdown" or "html")
+        scope: Scope level ("brief", "standard", "comprehensive")
+        pages: Custom page count
+        word_count: Custom word count
 
     Returns:
         Tuple of (outline, formatted_structure)
     """
-    generator = ReportGenerator()
+    # Create scope config
+    scope_config = None
+    if scope or pages or word_count:
+        scope_config = create_scope_config(
+            scope=scope,
+            pages=pages,
+            word_count=word_count,
+            query=title
+        )
+
+    generator = ReportGenerator(scope=scope_config)
     outline = generator.create_outline(title, research_data, report_type)
 
     if format_type == "html":

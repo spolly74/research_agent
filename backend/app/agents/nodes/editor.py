@@ -6,6 +6,7 @@ This agent can:
 2. Generate structured reports with sections
 3. Include proper citations
 4. Output in multiple formats (Markdown, HTML)
+5. Respect scope configuration for report length
 """
 
 import structlog
@@ -17,6 +18,7 @@ from app.agents.state import AgentState
 from app.core.llm_manager import get_llm, TaskType
 from app.reports.generator import ReportGenerator
 from app.reports.templates.base import ReportType, SectionType
+from app.reports.scope_config import ScopeConfig, ReportScope, create_scope_config
 
 logger = structlog.get_logger(__name__)
 
@@ -135,9 +137,11 @@ def editor_node(state: AgentState):
     Enhanced Editor Agent node.
 
     Analyzes research data and generates appropriate response format.
+    Uses scope configuration from state if available.
     """
     messages = state["messages"]
     research_data = state.get("research_data", [])
+    scope_config_dict = state.get("scope_config")
 
     # Get original query from first user message
     original_query = ""
@@ -149,11 +153,23 @@ def editor_node(state: AgentState):
     # Determine response format
     response_format = determine_report_format(original_query, research_data)
 
+    # Get or create scope config
+    if scope_config_dict:
+        scope_config = ScopeConfig(
+            scope=ReportScope(scope_config_dict.get("scope", "standard")),
+            custom_pages=scope_config_dict.get("target_pages"),
+            custom_word_count=scope_config_dict.get("target_word_count")
+        )
+    else:
+        scope_config = create_scope_config(query=original_query)
+
     logger.info(
         "Editor node invoked",
         message_count=len(messages),
         research_data_count=len(research_data),
-        response_format=response_format
+        response_format=response_format,
+        scope=scope_config.scope.value,
+        target_words=scope_config.parameters.target_word_count
     )
 
     # Get LLM
@@ -166,8 +182,13 @@ def editor_node(state: AgentState):
         for i, data in enumerate(research_data[:10])
     ]) if research_data else "No research data available."
 
+    # Get scope-specific instructions
+    scope_instructions = scope_config.get_editor_instructions()
+
     # Create enhanced system prompt
     enhanced_prompt = EDITOR_SYSTEM_PROMPT + f"""
+
+{scope_instructions}
 
 ## Original Query
 {original_query}
@@ -177,6 +198,7 @@ def editor_node(state: AgentState):
 
 ## Response Format
 Generate a {'detailed research report' if response_format == 'full_report' else 'clear, concise answer'}.
+Target approximately {scope_config.parameters.target_word_count} words ({scope_config.parameters.target_pages} pages).
 """
 
     system_msg = SystemMessage(content=enhanced_prompt)

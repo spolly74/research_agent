@@ -1,10 +1,10 @@
 from langchain_core.messages import SystemMessage
 from app.agents.state import AgentState
-from app.core.llm import get_llm
+from app.core.llm_manager import get_llm, TaskType
 
 def editor_node(state: AgentState):
     messages = state["messages"]
-    llm = get_llm()
+    llm = get_llm(task_type=TaskType.EDITOR)
 
     system_msg = SystemMessage(content="""
     You are an Editor Agent. Your job is to provide the final answer to the user.

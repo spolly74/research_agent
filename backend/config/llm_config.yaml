@@ -1,0 +1,139 @@
+# LLM Configuration for Research Agent
+# This file configures both Ollama endpoints and Claude API settings
+
+# Ollama endpoints - supports multiple VMs with load balancing
+ollama:
+  endpoints:
+    - url: "http://localhost:11434"
+      models:
+        - "llama3.2"
+      priority: 1  # Lower is higher priority
+      enabled: true
+    # Add more endpoints as needed:
+    # - url: "http://ollama-vm-1:11434"
+    #   models: ["llama3.2", "codellama"]
+    #   priority: 1
+    #   enabled: true
+    # - url: "http://ollama-vm-2:11434"
+    #   models: ["llama3.2", "mixtral"]
+    #   priority: 2
+    #   enabled: true
+
+  # Default model to use when not specified
+  default_model: "llama3.2"
+
+  # Health check interval in seconds
+  health_check_interval: 30
+
+  # Timeout for health checks in seconds
+  health_check_timeout: 5
+
+  # Request timeout in seconds
+  request_timeout: 120
+
+# Claude API configuration
+claude:
+  enabled: true
+
+  # Available models (in order of preference for different tasks)
+  models:
+    default: "claude-sonnet-4-20250514"
+    powerful: "claude-opus-4-5-20251101"
+
+  # Max tokens for responses
+  max_tokens: 4096
+
+  # Temperature (0 = deterministic)
+  temperature: 0
+
+  # Request timeout in seconds
+  request_timeout: 300
+
+# Task routing configuration
+# Determines which LLM to use based on task type and complexity
+routing:
+  # Complexity threshold (0.0 - 1.0)
+  # Tasks above this threshold use Claude
+  complexity_threshold: 0.7
+
+  # Task type routing rules
+  task_rules:
+    # Orchestrator: planning complex research
+    orchestrator:
+      default_provider: "ollama"
+      fallback_provider: "claude"
+      claude_model: "default"  # Use claude.models.default
+
+    # Researcher: web search and information gathering
+    researcher:
+      default_provider: "ollama"
+      fallback_provider: "claude"
+      claude_model: "default"
+
+    # Reviewer: critiquing and analyzing research
+    reviewer:
+      default_provider: "ollama"
+      fallback_provider: "claude"
+      claude_model: "default"
+
+    # Coder: generating code and tools
+    coder:
+      default_provider: "claude"  # Code gen works better with Claude
+      fallback_provider: "ollama"
+      claude_model: "default"
+
+    # Editor: writing final reports
+    editor:
+      default_provider: "ollama"
+      fallback_provider: "claude"
+      claude_model: "default"
+      # For long-form professional reports, use powerful model
+      complex_model: "powerful"
+
+    # Approval: final quality check
+    approval:
+      default_provider: "ollama"
+      fallback_provider: "claude"
+      claude_model: "default"
+
+  # Keywords that increase complexity score
+  complexity_keywords:
+    high:
+      - "analyze"
+      - "compare"
+      - "evaluate"
+      - "synthesize"
+      - "comprehensive"
+      - "detailed"
+      - "professional"
+      - "technical"
+      - "complex"
+      - "multi-step"
+    medium:
+      - "explain"
+      - "describe"
+      - "summarize"
+      - "list"
+      - "outline"
+
+  # Force Claude for these patterns (regex)
+  force_claude_patterns:
+    - "write.*code"
+    - "create.*tool"
+    - "generate.*script"
+    - "professional.*report"
+    - "long.?form"
+
+# Retry configuration
+retry:
+  max_attempts: 3
+  initial_delay: 1.0  # seconds
+  max_delay: 30.0  # seconds
+  exponential_base: 2
+
+# Logging configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  log_prompts: false  # Log full prompts (can be verbose)
+  log_responses: false  # Log full responses
+  log_token_usage: true  # Log token counts

@@ -1,12 +1,22 @@
 from langchain_core.messages import SystemMessage
 from app.agents.state import AgentState
-from app.core.llm import get_llm
+from app.core.llm_manager import get_llm, TaskType, analyze_complexity
 
 from app.models.plan import Plan, Task
 
 def orchestrator_node(state: AgentState):
     messages = state["messages"]
-    llm = get_llm()
+
+    # Analyze complexity of the user's request
+    user_message = messages[-1].content if messages else ""
+    complexity = analyze_complexity(user_message)
+
+    # Get LLM with task-appropriate routing
+    llm = get_llm(
+        task_type=TaskType.ORCHESTRATOR,
+        prompt=user_message,
+        complexity_score=complexity.score
+    )
     structured_llm = llm.with_structured_output(Plan)
 
     system_msg = SystemMessage(content="""

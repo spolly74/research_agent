@@ -4,6 +4,7 @@ linkup-sdk
 langchain
 langchain-community
 langchain-ollama
+langchain-anthropic
 langgraph
 sqlalchemy
 alembic
@@ -11,6 +12,10 @@ playwright
 beautifulsoup4
 requests
 pydantic
+pydantic-settings
 python-dotenv
 lxml
 html2text
+pyyaml
+tenacity
+structlog

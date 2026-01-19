@@ -1,10 +1,10 @@
 from langchain_core.messages import SystemMessage
 from app.agents.state import AgentState
-from app.core.llm import get_llm
+from app.core.llm_manager import get_llm, TaskType
 
 def reviewer_node(state: AgentState):
     messages = state["messages"]
-    llm = get_llm()
+    llm = get_llm(task_type=TaskType.REVIEWER)
 
     system_msg = SystemMessage(content="""
     You are a Review Agent. Critique the research findings.

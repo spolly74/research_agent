@@ -14,9 +14,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from app.api.endpoints import chat
+from app.api.endpoints import chat, llm
 
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
+app.include_router(llm.router, prefix="/api/llm", tags=["llm"])
 
 @app.get("/health")
 def read_root():

@@ -1,6 +1,6 @@
 from langchain_core.messages import HumanMessage, SystemMessage
 from app.agents.state import AgentState
-from app.core.llm import get_llm
+from app.core.llm_manager import get_llm, TaskType
 from app.agents.tools.browser import browser_search, visit_page
 
 def researcher_node(state: AgentState):
@@ -9,8 +9,8 @@ def researcher_node(state: AgentState):
     """
     messages = state["messages"]
 
-    # Initialize LLM with tools
-    llm = get_llm()
+    # Initialize LLM with tools - researcher uses Ollama by default
+    llm = get_llm(task_type=TaskType.RESEARCHER)
     tools = [browser_search, visit_page]
     llm_with_tools = llm.bind_tools(tools)
 

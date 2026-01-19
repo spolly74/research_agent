@@ -641,18 +641,85 @@ class CitationManager:
 | 4.2.3 | Replace all print statements | 2 hr |
 | 4.2.4 | Add log aggregation endpoint | 1 hr |
 
-#### 4.3 Progress Streaming
+#### 4.3 Progress Streaming & Status Tracking
 
-**Goal**: Real-time progress updates to frontend.
+**Goal**: Real-time progress updates to frontend with detailed execution status.
+
+**New File**: `backend/app/core/execution_tracker.py`
+
+```python
+# Proposed structure
+class ExecutionPhase(str, Enum):
+    PLANNING = "planning"
+    RESEARCHING = "researching"
+    REVIEWING = "reviewing"
+    CODING = "coding"
+    EDITING = "editing"
+    FINALIZING = "finalizing"
+
+class ExecutionStatus:
+    """Tracks current execution state for a research session."""
+
+    session_id: str
+    current_phase: ExecutionPhase
+    plan: dict                    # Orchestrator's plan
+    active_agent: str             # Currently executing agent
+    active_tools: list[str]       # Tools being used
+    progress: float               # 0.0 - 1.0
+    phase_details: dict           # Phase-specific info
+    started_at: datetime
+    estimated_completion: datetime
+
+class ExecutionTracker:
+    """Manages execution status across all sessions."""
+
+    def start_session(self, session_id: str, plan: dict) -> None:
+        """Initialize tracking for a new session."""
+        pass
+
+    def update_phase(self, session_id: str, phase: ExecutionPhase) -> None:
+        """Update current execution phase."""
+        pass
+
+    def set_active_agent(self, session_id: str, agent: str, tools: list[str]) -> None:
+        """Update active agent and tools."""
+        pass
+
+    def update_progress(self, session_id: str, progress: float, details: dict) -> None:
+        """Update progress and emit WebSocket event."""
+        pass
+
+    def get_status(self, session_id: str) -> ExecutionStatus:
+        """Get current execution status."""
+        pass
+```
+
+**WebSocket Events**:
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `session.started` | `{session_id, plan}` | Research session initiated |
+| `phase.changed` | `{session_id, phase, agent}` | Execution phase changed |
+| `agent.started` | `{session_id, agent, tools}` | Agent began processing |
+| `agent.progress` | `{session_id, agent, progress, detail}` | Agent progress update |
+| `tool.invoked` | `{session_id, tool, args}` | Tool being executed |
+| `tool.completed` | `{session_id, tool, result_summary}` | Tool finished |
+| `session.completed` | `{session_id, report_summary}` | Session finished |
+| `session.error` | `{session_id, error, recoverable}` | Error occurred |
 
 **Tasks**:
 
 | Task | Description | Estimate |
 |------|-------------|----------|
-| 4.3.1 | Add WebSocket endpoint | 2 hr |
-| 4.3.2 | Emit progress events from each agent | 2 hr |
-| 4.3.3 | Update frontend to consume WebSocket | 2 hr |
-| 4.3.4 | Add progress indicators to UI | 2 hr |
+| 4.3.1 | Create `ExecutionStatus` and `ExecutionTracker` classes | 2 hr |
+| 4.3.2 | Add WebSocket endpoint with connection management | 2 hr |
+| 4.3.3 | Implement event emission in ExecutionTracker | 1 hr |
+| 4.3.4 | Add tracking hooks to orchestrator node | 1 hr |
+| 4.3.5 | Add tracking hooks to all agent nodes | 2 hr |
+| 4.3.6 | Add tracking hooks to tool execution | 1 hr |
+| 4.3.7 | Implement progress estimation algorithm | 1 hr |
+| 4.3.8 | Add REST endpoint for status polling (fallback) | 30 min |
+| 4.3.9 | Write tests for execution tracker | 1 hr |
 
 #### 4.4 Error Handling & Retry
 
@@ -672,37 +739,80 @@ class CitationManager:
 
 ### Phase 5: Frontend Enhancements (Priority: Low)
 
-#### 5.1 Plan Visualization
+#### 5.1 Execution Status Dashboard
+
+**Goal**: Real-time visualization of research execution progress.
+
+**New Components**:
+
+```
+frontend/src/components/
+├── ExecutionStatus/
+│   ├── StatusDashboard.tsx      # Main status container
+│   ├── PlanViewer.tsx           # Shows orchestrator's plan
+│   ├── AgentIndicator.tsx       # Active agent with animation
+│   ├── ToolActivity.tsx         # Tools being used
+│   ├── ProgressTimeline.tsx     # Visual progress bar/timeline
+│   └── PhaseIndicator.tsx       # Current phase badge
+```
+
+**StatusDashboard Features**:
+
+| Feature | Description |
+|---------|-------------|
+| Plan Overview | Collapsible view of the orchestrator's planned steps |
+| Active Agent | Highlighted indicator showing which agent is running |
+| Tool Activity | Real-time display of tools being invoked |
+| Progress Bar | Overall completion percentage with phase markers |
+| Phase Timeline | Visual timeline showing completed/current/pending phases |
+| Time Estimate | Estimated time remaining (when available) |
+| Error Display | Inline error messages with retry options |
 
 **Tasks**:
 
 | Task | Description | Estimate |
 |------|-------------|----------|
-| 5.1.1 | Create PlanView component | 2 hr |
-| 5.1.2 | Add task status indicators | 1 hr |
-| 5.1.3 | Implement plan editing UI | 3 hr |
-| 5.1.4 | Add plan approval workflow | 2 hr |
+| 5.1.1 | Create WebSocket hook for status updates | 1 hr |
+| 5.1.2 | Create StatusDashboard container component | 2 hr |
+| 5.1.3 | Create PlanViewer with expandable steps | 2 hr |
+| 5.1.4 | Create AgentIndicator with status animations | 1 hr |
+| 5.1.5 | Create ToolActivity feed component | 1 hr |
+| 5.1.6 | Create ProgressTimeline component | 2 hr |
+| 5.1.7 | Integrate StatusDashboard into Chat view | 1 hr |
+| 5.1.8 | Add minimize/expand toggle for dashboard | 30 min |
+| 5.1.9 | Add dark mode support for status components | 1 hr |
 
-#### 5.2 Report Viewer
-
-**Tasks**:
-
-| Task | Description | Estimate |
-|------|-------------|----------|
-| 5.2.1 | Create ReportViewer component | 2 hr |
-| 5.2.2 | Add table of contents navigation | 1 hr |
-| 5.2.3 | Implement export buttons (MD/HTML/PDF) | 2 hr |
-| 5.2.4 | Add citation hover previews | 2 hr |
-
-#### 5.3 Tool Management UI
+#### 5.2 Plan Visualization & Editing
 
 **Tasks**:
 
 | Task | Description | Estimate |
 |------|-------------|----------|
-| 5.3.1 | Create ToolList component | 1 hr |
-| 5.3.2 | Add tool execution history | 2 hr |
-| 5.3.3 | Create tool creation wizard | 3 hr |
+| 5.2.1 | Create detailed PlanView component | 2 hr |
+| 5.2.2 | Add task status indicators | 1 hr |
+| 5.2.3 | Implement plan editing UI | 3 hr |
+| 5.2.4 | Add plan approval workflow | 2 hr |
+
+#### 5.3 Report Viewer
+
+**Tasks**:
+
+| Task | Description | Estimate |
+|------|-------------|----------|
+| 5.3.1 | Create ReportViewer component | 2 hr |
+| 5.3.2 | Add table of contents navigation | 1 hr |
+| 5.3.3 | Implement export buttons (MD/HTML/PDF) | 2 hr |
+| 5.3.4 | Add citation hover previews | 2 hr |
+
+#### 5.4 Tool Management UI
+
+**Tasks**:
+
+| Task | Description | Estimate |
+|------|-------------|----------|
+| 5.4.1 | Create ToolList component | 1 hr |
+| 5.4.2 | Add tool execution history | 2 hr |
+| 5.4.3 | Create tool creation wizard | 3 hr |
 
 ---
 
@@ -722,18 +832,21 @@ Week 3-4: Phase 2 (Tool System)
 └── Built-in Tool Library
 
 Week 5-6: Phase 3 (Report Generation)
-├── Report Templates
-├── Enhanced Editor Agent
-└── Citation Manager
+├── Report Templates ✅
+├── Enhanced Editor Agent ✅
+├── Citation Manager ✅
+├── Report API Endpoints ✅
+└── Report Scope Configuration (NEW)
 
 Week 7-8: Phase 4 (Infrastructure)
 ├── State Persistence
 ├── Structured Logging
-├── Progress Streaming
+├── Progress Streaming & Status Tracking (ENHANCED)
 └── Error Handling
 
 Week 9+: Phase 5 (Frontend)
-├── Plan Visualization
+├── Execution Status Dashboard (NEW)
+├── Plan Visualization & Editing
 ├── Report Viewer
 └── Tool Management UI
 ```
@@ -1004,6 +1117,15 @@ pytest tests/integration/ -v --timeout=120
 
 ---
 
-*Document Version: 1.0*
+*Document Version: 1.1*
 *Created: 2025-01-19*
-*Last Updated: 2025-01-19*
+*Last Updated: 2026-01-19*
+
+## Changelog
+
+### v1.1 (2026-01-19)
+- Added Phase 3.4: Report Scope Configuration
+- Enhanced Phase 4.3: Progress Streaming & Status Tracking with ExecutionTracker
+- Added Phase 5.1: Execution Status Dashboard
+- Marked Phase 3 components (3.1-3.3) as complete
+- Renumbered Phase 5 sections

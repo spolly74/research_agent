@@ -524,6 +524,64 @@ class EditorAgent:
 
 **New File**: `backend/app/reports/citation_manager.py`
 
+**Status**: ✅ Complete
+
+#### 3.4 Report Scope Configuration
+
+**Goal**: Allow users to specify desired report length/scope during prompts.
+
+**New File**: `backend/app/reports/scope_config.py`
+
+```python
+# Proposed structure
+class ReportScope(str, Enum):
+    BRIEF = "brief"           # 1-2 pages, key points only
+    STANDARD = "standard"     # 3-5 pages, balanced coverage
+    COMPREHENSIVE = "comprehensive"  # 10-15 pages, detailed analysis
+    CUSTOM = "custom"         # User-specified page count
+
+class ScopeConfig:
+    """Configures report generation based on desired scope."""
+
+    def __init__(self, scope: ReportScope, custom_pages: int = None):
+        self.scope = scope
+        self.target_pages = self._calculate_target_pages(custom_pages)
+
+    def scale_word_counts(self, template: ReportTemplate) -> ReportTemplate:
+        """Adjust section word counts based on scope."""
+        pass
+
+    def adjust_research_depth(self) -> dict:
+        """Configure research parameters (source count, detail level)."""
+        pass
+
+    def get_editor_instructions(self) -> str:
+        """Get scope-specific instructions for the editor agent."""
+        pass
+```
+
+**Scope Parameters**:
+
+| Scope | Target Pages | Word Count | Sources | Section Depth |
+|-------|--------------|------------|---------|---------------|
+| Brief | 1-2 | ~500-1000 | 3-5 | Key points only |
+| Standard | 3-5 | ~1500-2500 | 5-10 | Balanced coverage |
+| Comprehensive | 10-15 | ~5000-7500 | 15-25 | Full analysis |
+| Custom | User-defined | Calculated | Scaled | Adjusted |
+
+**Tasks**:
+
+| Task | Description | Estimate |
+|------|-------------|----------|
+| 3.4.1 | Create `ReportScope` enum and `ScopeConfig` class | 1 hr |
+| 3.4.2 | Implement word count scaling for templates | 1 hr |
+| 3.4.3 | Add research depth configuration | 1 hr |
+| 3.4.4 | Update orchestrator to use scope in planning | 1 hr |
+| 3.4.5 | Update editor prompts for scope awareness | 1 hr |
+| 3.4.6 | Add scope parameter to API endpoints | 30 min |
+| 3.4.7 | Add scope detection from natural language queries | 1 hr |
+| 3.4.8 | Write tests for scope configuration | 1 hr |
+
 ```python
 # Proposed structure
 class CitationManager:

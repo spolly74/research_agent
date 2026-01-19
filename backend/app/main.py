@@ -17,11 +17,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from app.api.endpoints import chat, llm, tools
+from app.api.endpoints import chat, llm, tools, reports
 
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(llm.router, prefix="/api/llm", tags=["llm"])
 app.include_router(tools.router, prefix="/api/tools", tags=["tools"])
+app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
 
 
 @app.on_event("startup")

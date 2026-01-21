@@ -29,8 +29,8 @@ class GraphCheckpoint(Base):
     # Checkpoint data (serialized state)
     checkpoint_data = Column(Text, nullable=False)  # JSON serialized
 
-    # Metadata
-    metadata = Column(Text, nullable=True)  # JSON serialized metadata
+    # Checkpoint metadata (named to avoid SQLAlchemy reserved 'metadata')
+    checkpoint_metadata = Column(Text, nullable=True)  # JSON serialized metadata
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)

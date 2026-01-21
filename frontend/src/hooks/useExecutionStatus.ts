@@ -17,6 +17,9 @@ import {
 
 const WS_BASE = "ws://localhost:8000";
 const POLL_INTERVAL = 2000; // 2 seconds fallback
+const WS_PING_INTERVAL = 25000; // 25 seconds (server timeout is 30s)
+const WS_RECONNECT_DELAY = 3000; // 3 seconds before reconnect attempt
+const WS_MAX_RECONNECT_ATTEMPTS = 5;
 
 export interface WebSocketEvent {
   type: string;
@@ -57,13 +60,16 @@ export function useExecutionStatus(sessionId: string | null): UseExecutionStatus
 
   const wsRef = useRef<WebSocket | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Add entry to activity log
   const addLogEntry = useCallback((entry: Omit<ActivityLogEntry, "id" | "timestamp">) => {
     setActivityLog((prev) => [
       {
         ...entry,
-        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
         timestamp: new Date(),
       },
       ...prev.slice(0, 99), // Keep last 100 entries
@@ -204,7 +210,7 @@ export function useExecutionStatus(sessionId: string | null): UseExecutionStatus
     }
   }, [sessionId]);
 
-  // Connect WebSocket
+  // Connect WebSocket with reconnection support
   useEffect(() => {
     if (!sessionId) {
       setStatus(null);
@@ -218,49 +224,121 @@ export function useExecutionStatus(sessionId: string | null): UseExecutionStatus
     // Initial data fetch
     fetchData();
 
-    // Try WebSocket connection
-    const ws = new WebSocket(`${WS_BASE}/ws/${sessionId}`);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setIsConnected(true);
-      addLogEntry({
-        type: "message",
-        content: "Connected to execution stream",
-      });
-
-      // Clear polling if WebSocket connects
+    // Cleanup function for intervals/timeouts
+    const cleanup = () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;
       }
-    };
-
-    ws.onmessage = handleWebSocketMessage;
-
-    ws.onerror = () => {
-      console.warn("WebSocket error, falling back to polling");
-      setIsConnected(false);
-    };
-
-    ws.onclose = () => {
-      setIsConnected(false);
-
-      // Start polling as fallback
-      if (!pollIntervalRef.current) {
-        pollIntervalRef.current = setInterval(fetchData, POLL_INTERVAL);
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+        pingIntervalRef.current = null;
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
     };
 
-    return () => {
-      ws.close();
-      wsRef.current = null;
+    // Start polling as initial fallback (will be cleared if WS connects)
+    if (!pollIntervalRef.current) {
+      pollIntervalRef.current = setInterval(fetchData, POLL_INTERVAL);
+    }
 
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
+    const connectWebSocket = () => {
+      // Don't reconnect if we've exceeded max attempts
+      if (reconnectAttemptsRef.current >= WS_MAX_RECONNECT_ATTEMPTS) {
+        console.warn("Max WebSocket reconnect attempts reached, using polling only");
+        return;
+      }
+
+      try {
+        const ws = new WebSocket(`${WS_BASE}/ws/${sessionId}`);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          setIsConnected(true);
+          reconnectAttemptsRef.current = 0; // Reset on successful connection
+          addLogEntry({
+            type: "message",
+            content: "Connected to execution stream",
+          });
+
+          // Clear polling since WebSocket is connected
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+
+          // Start sending periodic pings to keep connection alive
+          if (pingIntervalRef.current) {
+            clearInterval(pingIntervalRef.current);
+          }
+          pingIntervalRef.current = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "ping" }));
+            }
+          }, WS_PING_INTERVAL);
+        };
+
+        ws.onmessage = (event) => {
+          // Handle pong from server (keep-alive response)
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === "pong" || data.type === "ping") {
+              // Server sent ping, respond with pong
+              if (data.type === "ping" && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: "pong" }));
+              }
+              return; // Don't process further
+            }
+          } catch {
+            // Not JSON, pass to handler
+          }
+          handleWebSocketMessage(event);
+        };
+
+        ws.onerror = (event) => {
+          console.warn("WebSocket error, falling back to polling", event);
+          setIsConnected(false);
+        };
+
+        ws.onclose = (event) => {
+          setIsConnected(false);
+
+          // Clear ping interval
+          if (pingIntervalRef.current) {
+            clearInterval(pingIntervalRef.current);
+            pingIntervalRef.current = null;
+          }
+
+          // Start polling as fallback
+          if (!pollIntervalRef.current) {
+            pollIntervalRef.current = setInterval(fetchData, POLL_INTERVAL);
+          }
+
+          // Attempt reconnection if not a clean close
+          if (event.code !== 1000 && reconnectAttemptsRef.current < WS_MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttemptsRef.current++;
+            const delay = WS_RECONNECT_DELAY * reconnectAttemptsRef.current; // Exponential backoff
+            console.log(`WebSocket closed, attempting reconnect in ${delay}ms (attempt ${reconnectAttemptsRef.current})`);
+            reconnectTimeoutRef.current = setTimeout(connectWebSocket, delay);
+          }
+        };
+      } catch (err) {
+        console.error("Failed to create WebSocket:", err);
+        // Polling is already running as fallback
       }
     };
+
+    // Initial WebSocket connection attempt
+    connectWebSocket();
+
+    return cleanup;
   }, [sessionId, fetchData, handleWebSocketMessage, addLogEntry]);
 
   // Manual refresh

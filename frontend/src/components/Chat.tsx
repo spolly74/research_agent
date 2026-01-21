@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { getSessions, createSession, sendMessage, getSession, deleteSession } from '../api';
+import { getSessions, createSession, sendMessage, getSession, deleteSession, getSessionHistory } from '../api';
 import { cn } from '../lib/utils';
-import { MessageSquare, Send, Plus, Loader2, Trash2, Activity, BookOpen, Maximize2 } from 'lucide-react';
+import { MessageSquare, Send, Plus, Loader2, Trash2, Activity, BookOpen, Maximize2, History, ChevronDown, ChevronUp } from 'lucide-react';
 import { StatusDashboard } from './ExecutionStatus';
 import { ReportViewer } from './ReportViewer';
 
@@ -14,6 +14,16 @@ interface Message {
 interface Session {
     id: number;
     title: string;
+    status?: string;
+}
+
+interface ExecutionHistory {
+    session_id: number;
+    status: string;
+    current_phase: string;
+    agents_used: string[];
+    tools_used: string[];
+    error?: string;
 }
 
 // Detect if content looks like a report (has markdown headers and is long enough)
@@ -31,6 +41,8 @@ export default function Chat() {
     const [loading, setLoading] = useState(false);
     const [showStatus, setShowStatus] = useState(true);
     const [expandedReport, setExpandedReport] = useState<number | null>(null);
+    const [showHistory, setShowHistory] = useState(false);
+    const [executionHistory, setExecutionHistory] = useState<ExecutionHistory | null>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
 
     // Session ID format used by backend for tracking
@@ -43,8 +55,21 @@ export default function Chat() {
     useEffect(() => {
         if (currentSessionId) {
             loadMessages(currentSessionId);
+            loadExecutionHistory(currentSessionId);
+        } else {
+            setExecutionHistory(null);
         }
     }, [currentSessionId]);
+
+    const loadExecutionHistory = async (sessionId: number) => {
+        try {
+            const history = await getSessionHistory(sessionId);
+            setExecutionHistory(history);
+        } catch (error) {
+            console.error("Failed to load execution history:", error);
+            setExecutionHistory(null);
+        }
+    };
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -85,7 +110,19 @@ export default function Chat() {
     };
 
     const handleSend = async () => {
-        if (!input.trim() || !currentSessionId) return;
+        if (!input.trim()) return;
+
+        let sessionId: number;
+
+        // Auto-create session if needed
+        if (!currentSessionId) {
+            const session = await createSession();
+            setSessions(prev => [session, ...prev]);
+            setCurrentSessionId(session.id);
+            sessionId = session.id;
+        } else {
+            sessionId = currentSessionId;
+        }
 
         const userMsg = { id: Date.now(), role: 'user', content: input };
         setMessages(prev => [...prev, userMsg]);
@@ -94,8 +131,12 @@ export default function Chat() {
         setShowStatus(true); // Show status dashboard when processing
 
         try {
-            await sendMessage(currentSessionId, userMsg.content);
-            await loadMessages(currentSessionId);
+            await sendMessage(sessionId, userMsg.content);
+            await loadMessages(sessionId);
+            // Reload sessions to get updated title (generated from first message)
+            await loadSessions();
+            // Load execution history after completion
+            await loadExecutionHistory(sessionId);
         } catch (error) {
             console.error("Failed to send message", error);
         } finally {
@@ -104,7 +145,7 @@ export default function Chat() {
     };
 
     return (
-        <div className="flex h-screen bg-slate-900 text-slate-100 font-sans">
+        <div className="flex h-full bg-slate-900 text-slate-100 font-sans">
             {/* Sidebar */}
             <div className="w-64 border-r border-slate-800 p-4 flex flex-col bg-slate-950/50">
                 <button
@@ -172,6 +213,84 @@ export default function Chat() {
                     </div>
                 )}
 
+                {/* Execution History - Shows for completed sessions */}
+                {!loading && executionHistory && messages.length > 0 && (
+                    <div className="border-b border-slate-700/50 bg-slate-900/30">
+                        <button
+                            onClick={() => setShowHistory(!showHistory)}
+                            className="w-full px-4 py-2 flex items-center justify-between text-sm text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-colors"
+                        >
+                            <div className="flex items-center gap-2">
+                                <History size={14} />
+                                <span>Execution History</span>
+                                {executionHistory.status === 'completed' && (
+                                    <span className="px-1.5 py-0.5 text-[10px] font-mono bg-emerald-500/20 text-emerald-400 rounded">
+                                        Completed
+                                    </span>
+                                )}
+                                {executionHistory.status === 'error' && (
+                                    <span className="px-1.5 py-0.5 text-[10px] font-mono bg-red-500/20 text-red-400 rounded">
+                                        Error
+                                    </span>
+                                )}
+                            </div>
+                            {showHistory ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </button>
+
+                        {showHistory && (
+                            <div className="px-4 pb-3 space-y-3">
+                                {/* Phase */}
+                                <div className="flex items-center gap-2 text-xs">
+                                    <span className="text-slate-500 w-20">Phase:</span>
+                                    <span className="text-cyan-400 font-mono">{executionHistory.current_phase || 'N/A'}</span>
+                                </div>
+
+                                {/* Agents Used */}
+                                {executionHistory.agents_used && executionHistory.agents_used.length > 0 && (
+                                    <div className="flex items-start gap-2 text-xs">
+                                        <span className="text-slate-500 w-20 flex-shrink-0">Agents:</span>
+                                        <div className="flex flex-wrap gap-1">
+                                            {executionHistory.agents_used.map((agent, i) => (
+                                                <span
+                                                    key={i}
+                                                    className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded font-mono"
+                                                >
+                                                    {agent}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Tools Used */}
+                                {executionHistory.tools_used && executionHistory.tools_used.length > 0 && (
+                                    <div className="flex items-start gap-2 text-xs">
+                                        <span className="text-slate-500 w-20 flex-shrink-0">Tools:</span>
+                                        <div className="flex flex-wrap gap-1">
+                                            {executionHistory.tools_used.map((tool, i) => (
+                                                <span
+                                                    key={i}
+                                                    className="px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded font-mono"
+                                                >
+                                                    {tool}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Error if any */}
+                                {executionHistory.error && (
+                                    <div className="flex items-start gap-2 text-xs">
+                                        <span className="text-slate-500 w-20 flex-shrink-0">Error:</span>
+                                        <span className="text-red-400 font-mono">{executionHistory.error}</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                     {messages.length === 0 ? (
                         <div className="h-full flex items-center justify-center text-slate-500 flex-col gap-4">
@@ -183,7 +302,7 @@ export default function Chat() {
                             </div>
                             <div className="text-center">
                                 <p className="text-lg font-medium text-slate-400">Research Agent Ready</p>
-                                <p className="text-sm text-slate-600 mt-1">Start a new task or select an existing one</p>
+                                <p className="text-sm text-slate-600 mt-1">Type your research topic below to get started</p>
                             </div>
                         </div>
                     ) : (
@@ -275,27 +394,33 @@ export default function Chat() {
 
                 {/* Input Area */}
                 <div className="p-4 border-t border-slate-700/50 bg-gradient-to-t from-slate-950 to-slate-900">
-                    <div className="max-w-3xl mx-auto relative flex items-center">
-                        <input
-                            type="text"
+                    <div className="max-w-3xl mx-auto relative flex items-end">
+                        <textarea
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && !loading && handleSend()}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey && !loading) {
+                                    e.preventDefault();
+                                    handleSend();
+                                }
+                            }}
                             placeholder="What do you want to research?"
-                            disabled={loading || !currentSessionId}
+                            disabled={loading}
+                            rows={2}
                             className={cn(
-                                "w-full bg-slate-800/80 border border-slate-700/50 rounded-xl py-3.5 px-5 pr-14",
+                                "w-full bg-slate-800/80 border border-slate-700/50 rounded-xl py-3 px-5 pr-14",
                                 "text-slate-200 placeholder-slate-500",
                                 "focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/50 focus:outline-none",
                                 "transition-all duration-200",
-                                "disabled:opacity-50 disabled:cursor-not-allowed"
+                                "disabled:opacity-50 disabled:cursor-not-allowed",
+                                "resize-y min-h-[60px] max-h-[200px]"
                             )}
                         />
                         <button
                             onClick={handleSend}
-                            disabled={loading || !currentSessionId || !input.trim()}
+                            disabled={loading || !input.trim()}
                             className={cn(
-                                "absolute right-2 p-2.5 rounded-lg transition-all duration-200",
+                                "absolute right-2 bottom-2 p-2.5 rounded-lg transition-all duration-200",
                                 "bg-gradient-to-r from-cyan-600 to-blue-600",
                                 "hover:from-cyan-500 hover:to-blue-500",
                                 "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-cyan-600 disabled:hover:to-blue-600",

@@ -298,7 +298,21 @@ def detect_scope_from_query(query: str) -> tuple[ReportScope, Optional[int]]:
     """
     query_lower = query.lower()
 
-    # Check for explicit page count
+    # Check for page ranges first (e.g., "4-5 page", "4 to 5 pages")
+    range_patterns = [
+        r'(\d+)\s*[-–—]\s*(\d+)\s*page',  # 4-5 page, 4–5 pages
+        r'(\d+)\s*to\s*(\d+)\s*page',      # 4 to 5 pages
+    ]
+
+    for pattern in range_patterns:
+        match = re.search(pattern, query_lower)
+        if match:
+            # Use the higher number in the range as target
+            pages = max(int(match.group(1)), int(match.group(2)))
+            logger.info("Detected page range from query", pages=pages)
+            return ReportScope.CUSTOM, pages
+
+    # Check for explicit page count (single number)
     page_patterns = [
         r'(\d+)\s*page',
         r'(\d+)-page',

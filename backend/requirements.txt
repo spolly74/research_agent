@@ -19,3 +19,5 @@ html2text
 pyyaml
 tenacity
 structlog
+pypdf
+python-docx

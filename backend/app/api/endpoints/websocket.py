@@ -246,26 +246,49 @@ async def websocket_session_endpoint(websocket: WebSocket, session_id: str):
     Args:
         session_id: The session to subscribe to
     """
-    await manager.connect(websocket, session_id)
+    try:
+        await manager.connect(websocket, session_id)
+    except Exception as e:
+        logger.error("Failed to accept WebSocket connection", error=str(e), session_id=session_id)
+        return
 
-    # Send current status immediately
-    tracker = get_execution_tracker()
-    status = tracker.get_status(session_id)
-    if status:
-        await websocket.send_json({
-            "type": "status",
-            "session_id": session_id,
-            "status": status.to_dict()
-        })
-    else:
-        await websocket.send_json({
-            "type": "info",
-            "message": f"Waiting for session {session_id} to start"
-        })
+    # Send current status immediately (with error handling)
+    try:
+        tracker = get_execution_tracker()
+        status = tracker.get_status(session_id)
+        if status:
+            await websocket.send_json({
+                "type": "status",
+                "session_id": session_id,
+                "status": status.to_dict()
+            })
+        else:
+            await websocket.send_json({
+                "type": "info",
+                "session_id": session_id,
+                "message": f"Waiting for session {session_id} to start"
+            })
+    except Exception as e:
+        logger.error("Failed to send initial status", error=str(e), session_id=session_id)
+        manager.disconnect(websocket)
+        return
 
     try:
         while True:
-            data = await websocket.receive_text()
+            try:
+                # Use wait_for with timeout to allow periodic keep-alive checks
+                data = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=30.0  # 30 second timeout
+                )
+            except asyncio.TimeoutError:
+                # Send a ping to keep connection alive
+                try:
+                    await websocket.send_json({"type": "ping"})
+                except Exception:
+                    # Connection likely closed
+                    break
+                continue
 
             try:
                 message = json.loads(data)
@@ -273,6 +296,10 @@ async def websocket_session_endpoint(websocket: WebSocket, session_id: str):
                 # Handle ping/pong
                 if message.get("type") == "ping":
                     await websocket.send_json({"type": "pong"})
+
+                elif message.get("type") == "pong":
+                    # Client responded to our ping, connection is alive
+                    pass
 
                 # Handle status request
                 elif message.get("type") == "get_status":
@@ -291,8 +318,11 @@ async def websocket_session_endpoint(websocket: WebSocket, session_id: str):
                 })
 
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
         logger.info("WebSocket client disconnected", session_id=session_id)
+    except Exception as e:
+        logger.error("WebSocket error", error=str(e), session_id=session_id)
+    finally:
+        manager.disconnect(websocket)
 
 
 def get_connection_manager() -> ConnectionManager:

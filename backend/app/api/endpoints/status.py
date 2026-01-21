@@ -60,13 +60,35 @@ def get_session_status(session_id: str) -> dict[str, Any]:
         session_id: The session identifier
 
     Returns:
-        Current execution status
+        Current execution status or pending status if not yet tracking
     """
     tracker = get_execution_tracker()
     status = tracker.get_status(session_id)
 
     if not status:
-        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+        # Return a pending status instead of 404 - session may be starting up
+        return {
+            "success": True,
+            "session_id": session_id,
+            "status": {
+                "session_id": session_id,
+                "current_phase": "initializing",
+                "progress": 0,
+                "active_agent": None,
+                "active_tools": [],
+                "plan": None,
+                "plan_approval_status": "pending",
+                "plan_waiting_approval": False,
+                "started_at": None,
+                "updated_at": None,
+                "completed_at": None,
+                "error": None,
+                "messages": ["Waiting for session to start..."],
+                "phase_progress": {},
+                "estimated_completion": None,
+                "agent_history": []
+            }
+        }
 
     return {
         "success": True,
@@ -128,16 +150,20 @@ def get_session_plan(session_id: str) -> dict[str, Any]:
         session_id: The session identifier
 
     Returns:
-        The orchestrator's plan
+        The orchestrator's plan or empty if not yet created
     """
     tracker = get_execution_tracker()
     status = tracker.get_status(session_id)
 
-    if not status:
-        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
-
-    if not status.plan:
-        raise HTTPException(status_code=404, detail="Plan not yet created for this session")
+    if not status or not status.plan:
+        # Return empty plan instead of 404
+        return {
+            "success": True,
+            "session_id": session_id,
+            "plan": None,
+            "approval_status": "pending",
+            "waiting_approval": False
+        }
 
     return {
         "success": True,
@@ -337,13 +363,20 @@ def get_session_agents(session_id: str) -> dict[str, Any]:
         session_id: The session identifier
 
     Returns:
-        List of agent executions
+        List of agent executions or empty if not yet tracking
     """
     tracker = get_execution_tracker()
     status = tracker.get_status(session_id)
 
     if not status:
-        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+        # Return empty agents list instead of 404
+        return {
+            "success": True,
+            "session_id": session_id,
+            "active_agent": None,
+            "agent_count": 0,
+            "agents": []
+        }
 
     agents = []
     for agent in status.agent_history:
@@ -406,13 +439,18 @@ def get_session_messages(
         limit: Maximum messages to return
 
     Returns:
-        List of status messages
+        List of status messages or empty if not yet tracking
     """
     tracker = get_execution_tracker()
     status = tracker.get_status(session_id)
 
     if not status:
-        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+        return {
+            "success": True,
+            "session_id": session_id,
+            "count": 0,
+            "messages": []
+        }
 
     messages = status.messages[-limit:] if limit else status.messages
 
@@ -464,13 +502,10 @@ def get_session_progress(session_id: str) -> dict[str, Any]:
         session_id: The session identifier
 
     Returns:
-        Progress breakdown by phase
+        Progress breakdown by phase or initial state if not yet tracking
     """
     tracker = get_execution_tracker()
     status = tracker.get_status(session_id)
-
-    if not status:
-        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
 
     phases = [
         {"name": "Initializing", "key": "initializing", "weight": 0.05},
@@ -481,6 +516,29 @@ def get_session_progress(session_id: str) -> dict[str, Any]:
         {"name": "Editing", "key": "editing", "weight": 0.20},
         {"name": "Finalizing", "key": "finalizing", "weight": 0.05},
     ]
+
+    # If no status yet, return initial state with all phases pending
+    if not status:
+        phase_details = []
+        for i, phase in enumerate(phases):
+            phase_details.append({
+                "name": phase["name"],
+                "key": phase["key"],
+                "progress": 0.0,
+                "weight": phase["weight"],
+                "is_current": i == 0,  # First phase is current
+                "is_completed": False,
+                "status": "current" if i == 0 else "pending"
+            })
+        return {
+            "success": True,
+            "session_id": session_id,
+            "overall_progress": 0.0,
+            "current_phase": "initializing",
+            "phases": phase_details,
+            "started_at": None,
+            "estimated_completion": None
+        }
 
     phase_details = []
     for phase in phases:

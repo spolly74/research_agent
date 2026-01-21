@@ -35,3 +35,15 @@ export async function deleteSession(sessionId: number) {
     });
     return response.ok;
 }
+
+export async function updateSessionTitle(sessionId: number, title: string) {
+    const response = await fetch(`${API_URL}/sessions/${sessionId}?title=${encodeURIComponent(title)}`, {
+        method: "PATCH",
+    });
+    return response.json();
+}
+
+export async function getSessionHistory(sessionId: number) {
+    const response = await fetch(`${API_URL}/sessions/${sessionId}/history`);
+    return response.json();
+}

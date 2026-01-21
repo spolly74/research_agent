@@ -7,6 +7,7 @@ ollama:
     - url: "http://localhost:11434"
       models:
         - "llama3.2"
+        - "devstral"
       priority: 1  # Lower is higher priority
       enabled: true
     # Add more endpoints as needed:
@@ -21,6 +22,9 @@ ollama:
 
   # Default model to use when not specified
   default_model: "llama3.2"
+
+  # Specialized models
+  coding_model: "devstral"
 
   # Health check interval in seconds
   health_check_interval: 30
@@ -78,8 +82,9 @@ routing:
 
     # Coder: generating code and tools
     coder:
-      default_provider: "claude"  # Code gen works better with Claude
-      fallback_provider: "ollama"
+      default_provider: "ollama"  # Use devstral for coding
+      ollama_model: "devstral"    # Specialized coding model
+      fallback_provider: "claude"
       claude_model: "default"
 
     # Editor: writing final reports

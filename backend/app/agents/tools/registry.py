@@ -442,6 +442,9 @@ def register_builtin_tools():
     from app.agents.tools.math_tools import calculator, statistics_calculator, unit_converter
     from app.agents.tools.http_tools import api_get, api_post, json_parser
     from app.agents.tools.executor import execute_python, analyze_code
+    from app.agents.tools.filesystem import file_reader, file_writer, list_directory
+    from app.agents.tools.database import database_query, database_schema
+    from app.agents.tools.documents import document_parser, document_metadata
 
     registry = get_tool_registry()
 
@@ -519,4 +522,56 @@ def register_builtin_tools():
         allowed_agents=["coder", "reviewer"]
     )
 
-    logger.info("Built-in tools registered", count=10)
+    # Register filesystem tools
+    registry.register(
+        file_reader,
+        category=ToolCategory.FILE,
+        is_builtin=True,
+        allowed_agents=["researcher", "coder"]
+    )
+
+    registry.register(
+        file_writer,
+        category=ToolCategory.FILE,
+        is_builtin=True,
+        allowed_agents=["coder"]
+    )
+
+    registry.register(
+        list_directory,
+        category=ToolCategory.FILE,
+        is_builtin=True,
+        allowed_agents=["researcher", "coder"]
+    )
+
+    # Register database tools
+    registry.register(
+        database_query,
+        category=ToolCategory.DATA,
+        is_builtin=True,
+        allowed_agents=["researcher", "coder"]
+    )
+
+    registry.register(
+        database_schema,
+        category=ToolCategory.DATA,
+        is_builtin=True,
+        allowed_agents=["researcher", "coder"]
+    )
+
+    # Register document tools
+    registry.register(
+        document_parser,
+        category=ToolCategory.FILE,
+        is_builtin=True,
+        allowed_agents=["researcher"]
+    )
+
+    registry.register(
+        document_metadata,
+        category=ToolCategory.FILE,
+        is_builtin=True,
+        allowed_agents=["researcher"]
+    )
+
+    logger.info("Built-in tools registered", count=17)

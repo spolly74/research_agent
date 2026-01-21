@@ -5,6 +5,7 @@ Implements LangGraph's BaseCheckpointSaver interface to persist
 graph state to SQLite, enabling session recovery across restarts.
 """
 
+import base64
 import json
 import uuid
 from typing import Any, Dict, Iterator, Optional, Sequence, Tuple
@@ -25,6 +26,21 @@ from app.core.database import SessionLocal
 from app.models.graph_state import GraphCheckpoint, GraphWrite, SessionRecovery
 
 logger = structlog.get_logger(__name__)
+
+
+def _serialize_data(data: Any) -> str:
+    """Serialize data to a JSON-safe string, handling bytes."""
+    if isinstance(data, bytes):
+        return json.dumps({"__bytes__": True, "data": base64.b64encode(data).decode("utf-8")})
+    return json.dumps(data)
+
+
+def _deserialize_data(data_str: str) -> Any:
+    """Deserialize data from JSON string, handling bytes."""
+    data = json.loads(data_str)
+    if isinstance(data, dict) and data.get("__bytes__"):
+        return base64.b64decode(data["data"])
+    return data
 
 
 class DatabaseCheckpointer(BaseCheckpointSaver):
@@ -75,12 +91,18 @@ class DatabaseCheckpointer(BaseCheckpointSaver):
 
             # Deserialize checkpoint data
             checkpoint_data = json.loads(checkpoint_row.checkpoint_data)
-            checkpoint = self.serde.loads_typed((checkpoint_data["type"], checkpoint_data["data"]))
+            # Handle both old format (data) and new format (data_str) for backwards compatibility
+            if "data_str" in checkpoint_data:
+                data = _deserialize_data(checkpoint_data["data_str"])
+            else:
+                data = checkpoint_data["data"]
+            checkpoint = self.serde.loads_typed((checkpoint_data["type"], data))
 
-            # Parse metadata
-            metadata = {}
-            if checkpoint_row.metadata:
-                metadata = json.loads(checkpoint_row.metadata)
+            # Parse metadata - ensure 'step' is always present
+            metadata = {"step": -1}  # Default step value
+            if checkpoint_row.checkpoint_metadata:
+                saved_metadata = json.loads(checkpoint_row.checkpoint_metadata)
+                metadata.update(saved_metadata)
 
             # Get pending writes
             writes = self._get_writes(db, thread_id, checkpoint_row.checkpoint_id)
@@ -135,7 +157,12 @@ class DatabaseCheckpointer(BaseCheckpointSaver):
             value = None
             if row.value:
                 value_data = json.loads(row.value)
-                value = self.serde.loads_typed((value_data["type"], value_data["data"]))
+                # Handle both old format (data) and new format (data_str)
+                if "data_str" in value_data:
+                    data = _deserialize_data(value_data["data_str"])
+                else:
+                    data = value_data["data"]
+                value = self.serde.loads_typed((value_data["type"], data))
             writes.append((row.task_id, row.channel, value))
 
         return writes
@@ -195,13 +222,18 @@ class DatabaseCheckpointer(BaseCheckpointSaver):
 
             for row in query.all():
                 checkpoint_data = json.loads(row.checkpoint_data)
-                checkpoint = self.serde.loads_typed(
-                    (checkpoint_data["type"], checkpoint_data["data"])
-                )
+                # Handle both old format (data) and new format (data_str)
+                if "data_str" in checkpoint_data:
+                    data = _deserialize_data(checkpoint_data["data_str"])
+                else:
+                    data = checkpoint_data["data"]
+                checkpoint = self.serde.loads_typed((checkpoint_data["type"], data))
 
-                metadata = {}
-                if row.metadata:
-                    metadata = json.loads(row.metadata)
+                # Ensure 'step' is always present in metadata
+                metadata = {"step": -1}  # Default step value
+                if row.checkpoint_metadata:
+                    saved_metadata = json.loads(row.checkpoint_metadata)
+                    metadata.update(saved_metadata)
 
                 writes = self._get_writes(db, thread_id, row.checkpoint_id)
 
@@ -261,7 +293,9 @@ class DatabaseCheckpointer(BaseCheckpointSaver):
         try:
             # Serialize checkpoint
             type_name, data = self.serde.dumps_typed(checkpoint)
-            checkpoint_data = json.dumps({"type": type_name, "data": data})
+            # Handle bytes data by encoding to base64
+            data_serialized = _serialize_data(data)
+            checkpoint_data = json.dumps({"type": type_name, "data_str": data_serialized})
 
             # Serialize metadata
             metadata_json = json.dumps(metadata.__dict__ if hasattr(metadata, '__dict__') else {})
@@ -272,7 +306,7 @@ class DatabaseCheckpointer(BaseCheckpointSaver):
                 checkpoint_id=checkpoint_id,
                 parent_checkpoint_id=parent_checkpoint_id,
                 checkpoint_data=checkpoint_data,
-                metadata=metadata_json,
+                checkpoint_metadata=metadata_json,
             )
 
             db.add(checkpoint_row)
@@ -324,7 +358,8 @@ class DatabaseCheckpointer(BaseCheckpointSaver):
                 # Serialize value
                 if value is not None:
                     type_name, data = self.serde.dumps_typed(value)
-                    value_json = json.dumps({"type": type_name, "data": data})
+                    data_serialized = _serialize_data(data)
+                    value_json = json.dumps({"type": type_name, "data_str": data_serialized})
                 else:
                     value_json = None
 

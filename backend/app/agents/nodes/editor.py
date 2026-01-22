@@ -210,9 +210,26 @@ def editor_node(state: AgentState):
 ## Available Research Data
 {research_context}
 
+## CRITICAL WORD COUNT REQUIREMENTS
+**Target Length: {scope_config.parameters.target_word_count} words ({scope_config.parameters.target_pages} pages)**
+
+This is a {scope_config.parameters.target_pages}-page report request. You MUST:
+1. Write approximately {scope_config.parameters.target_word_count} words total
+2. Include detailed analysis, not just summaries
+3. Expand on each key finding with evidence and context
+4. Use the research data thoroughly - don't just skim it
+5. Include multiple subsections with substantial content in each
+
+If the user requested {scope_config.parameters.target_pages} pages, a 1-paragraph response is NOT acceptable.
+Write a proper {scope_config.parameters.target_pages}-page research report with:
+- An executive summary (100-150 words)
+- Key findings section with multiple bullet points and explanations
+- Detailed analysis sections (300-500 words each)
+- Supporting evidence and citations throughout
+- A comprehensive conclusion
+
 ## Response Format
 Generate a {'detailed research report' if response_format == 'full_report' else 'clear, concise answer'}.
-Target approximately {scope_config.parameters.target_word_count} words ({scope_config.parameters.target_pages} pages).
 """
 
     system_msg = SystemMessage(content=enhanced_prompt)

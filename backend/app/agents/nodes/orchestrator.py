@@ -52,17 +52,34 @@ def orchestrator_node(state: AgentState):
     You are the Chief Research Orchestrator.
     Your goal is to break down a user's request into a detailed, step-by-step RESEARCH PLAN.
 
-    1. Analyze the user's request.
-    2. Create a list of tasks.
-    3. Assign each task to one of the following agents:
-       - 'researcher': For finding information, searching the web, or reading pages.
-       - 'coder': For writing python scripts, data analysis, or generating charts.
-       - 'reviewer': For critiquing research or code.
-       - 'editor': For compiling the final answer.
+    ## Task Creation Guidelines
+    1. Analyze the user's request carefully.
+    2. Create MULTIPLE research tasks - one task per distinct aspect of the topic.
+    3. Each research task should have a specific, actionable description.
+    4. Order tasks logically (background first, then analysis, then conclusions).
+
+    ## Available Agents
+    Assign each task to one of these agents:
+    - 'researcher': For finding information, searching the web, reading pages. Use for EACH distinct research question.
+    - 'coder': For writing python scripts, data analysis, generating charts.
+    - 'reviewer': For critiquing research or code, ensuring quality.
+    - 'editor': For compiling the final answer into a polished report.
+
+    ## CRITICAL: Task Descriptions
+    Each research task description should be a SPECIFIC search query or investigation, such as:
+    - "Research the history and origins of [topic]"
+    - "Find data and statistics about [specific aspect]"
+    - "Investigate arguments for and against [position]"
+    - "Search for expert opinions and analysis on [topic]"
+    - "Find case studies or real-world examples of [topic]"
 
     {scope_guidance}
 
-    Ensure the plan is logical and covers all aspects of the request.
+    ## Task Requirements
+    - Create enough research tasks to gather sufficient material for the requested report length.
+    - Each task should focus on ONE specific aspect to ensure thorough coverage.
+    - Include an 'editor' task at the end to compile all research into the final report.
+    - The editor task description should include the target word count.
     """)
 
     # If we already have a plan, we might be here to update it (future logic),
@@ -120,33 +137,61 @@ def orchestrator_node(state: AgentState):
 def _get_scope_guidance(scope_config) -> str:
     """Generate scope-specific guidance for the orchestrator."""
     params = scope_config.parameters
+    target_pages = params.target_pages
+    target_words = params.target_word_count
+
+    # Calculate recommended research tasks based on page count
+    # More pages = more research tasks to gather sufficient material
+    if target_pages <= 2:
+        min_research_tasks = 2
+        max_research_tasks = 3
+        depth_desc = "quick, focused"
+    elif target_pages <= 5:
+        min_research_tasks = 3
+        max_research_tasks = 5
+        depth_desc = "balanced, thorough"
+    elif target_pages <= 10:
+        min_research_tasks = 5
+        max_research_tasks = 8
+        depth_desc = "detailed, comprehensive"
+    else:
+        min_research_tasks = 8
+        max_research_tasks = 12
+        depth_desc = "exhaustive, academic-level"
 
     if scope_config.scope.value == "brief":
         return f"""
-    ## Report Scope: BRIEF (1-2 pages)
+    ## Report Scope: BRIEF ({target_pages} pages, ~{target_words} words)
     - This is a brief report request. Plan for a quick, focused research effort.
-    - Target {params.min_sources}-{params.max_sources} sources maximum.
+    - Create {min_research_tasks}-{max_research_tasks} focused research tasks.
+    - Target {params.min_sources}-{params.max_sources} sources total.
     - Focus on gathering key facts only - no deep dives.
-    - The editor should produce a concise summary.
-    - Skip detailed methodology or extensive background research.
+    - The editor should produce a concise summary of ~{target_words} words.
     """
 
     elif scope_config.scope.value == "comprehensive":
         return f"""
-    ## Report Scope: COMPREHENSIVE (10-15 pages)
-    - This is a comprehensive report request. Plan for thorough, detailed research.
-    - Target {params.min_sources}-{params.max_sources} sources.
-    - Include multiple research tasks to cover different aspects.
-    - Include tasks for methodology and background research.
-    - The editor should produce a detailed, well-structured report.
-    - Consider adding a reviewer task to ensure quality.
+    ## Report Scope: COMPREHENSIVE ({target_pages} pages, ~{target_words} words)
+    - This is a comprehensive report request. Plan for {depth_desc} research.
+    - Create {min_research_tasks}-{max_research_tasks} research tasks covering different aspects.
+    - Target {params.min_sources}-{params.max_sources} sources total.
+    - Each research task should explore a different facet of the topic.
+    - Include tasks for: background/context, main analysis, supporting evidence, counterarguments, case studies.
+    - The editor MUST produce a detailed report of ~{target_words} words ({target_pages} pages).
+    - Consider adding a reviewer task to ensure quality and depth.
     """
 
     else:  # standard or custom
         return f"""
-    ## Report Scope: STANDARD (3-5 pages)
-    - This is a standard report request. Plan for balanced research.
-    - Target {params.min_sources}-{params.max_sources} sources.
-    - Cover the main aspects without excessive detail.
-    - The editor should produce a balanced, informative report.
+    ## Report Scope: {target_pages}-PAGE REPORT (~{target_words} words)
+    - The user has requested a {target_pages}-page report. Plan accordingly.
+    - Create {min_research_tasks}-{max_research_tasks} research tasks to gather sufficient material.
+    - Target {params.min_sources}-{params.max_sources} sources total.
+    - Each research task should cover a distinct aspect of the topic:
+      * Background and context
+      * Core analysis / main arguments
+      * Supporting evidence and data
+      * Implications or conclusions
+    - The editor MUST produce a report of approximately {target_words} words ({target_pages} pages).
+    - This requires {depth_desc} research - not just surface-level information.
     """
